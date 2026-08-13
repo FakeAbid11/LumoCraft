@@ -1,0 +1,149 @@
+package com.lumocraft.app.data.storage
+
+import android.content.Context
+import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.domain.version.InstallState
+import com.lumocraft.app.domain.version.InstalledVersionMetadata
+import java.io.File
+import org.json.JSONObject
+
+/**
+ * Owns the on-disk launcher layout. All file paths and metadata
+ * serialization live here, never in the UI.
+ *
+ * Layout:
+ * <filesDir>/minecraft/
+ * ├── versions/
+ * │   └── <versionId>/
+ * │       ├── <versionId>.json
+ * │       ├── metadata.json
+ * │       └── <loggingId>.json          (logging configuration)
+ * ├── libraries/                        (Mojang folder structure preserved)
+ * ├── assets/
+ * │   ├── indexes/<indexId>.json
+ * │   └── objects/<hash[0..2]>/<hash>
+ * ├── logs/                             (future: launcher/game logs)
+ * └── runtime/                          (Java runtimes)
+ *     ├── java17/
+ *     ├── java21/
+ *     └── metadata.json
+ */
+class StorageManager(context: Context) {
+
+    private val launcherRoot: File = File(context.filesDir, AppConfig.LAUNCHER_DIRECTORY_NAME)
+
+    fun launcherRoot(): File = launcherRoot
+
+    fun versionsDirectory(): File = File(launcherRoot, "versions")
+
+    fun versionDirectory(versionId: String): File =
+        File(versionsDirectory(), sanitize(versionId))
+
+    fun versionJsonFile(versionId: String): File =
+        File(versionDirectory(versionId), "${sanitize(versionId)}.json")
+
+    fun metadataFile(versionId: String): File =
+        File(versionDirectory(versionId), METADATA_FILE_NAME)
+
+    fun assetsDirectory(): File = File(launcherRoot, "assets")
+
+    fun indexesDirectory(): File = File(assetsDirectory(), "indexes")
+
+    fun objectsDirectory(): File = File(assetsDirectory(), "objects")
+
+    fun librariesDirectory(): File = File(launcherRoot, "libraries")
+
+    fun logsDirectory(): File = File(launcherRoot, "logs")
+
+    fun runtimeDirectory(): File = File(launcherRoot, "runtime")
+
+    fun runtimeMetadataFile(): File = File(runtimeDirectory(), "metadata.json")
+
+    fun runtimeDirectoryFor(id: String): File =
+        File(runtimeDirectory(), sanitize(id))
+
+    fun assetIndexFile(indexId: String): File =
+        File(indexesDirectory(), "${sanitize(indexId)}.json")
+
+    /** Object storage location: <objects>/<first two hash chars>/<hash>. */
+    fun objectFile(hash: String): File =
+        File(File(objectsDirectory(), hash.take(2)), hash)
+
+    /**
+     * Resolves a Mojang-relative library path inside `libraries/`, rejecting
+     * traversal segments so manifest data can never escape the root.
+     */
+    fun libraryFile(relativePath: String): File {
+        val segments = relativePath.split('/').mapNotNull { segment ->
+            segment.takeIf { it.isNotEmpty() && it != "." && it != ".." }
+        }
+        return segments.fold(librariesDirectory()) { dir, name -> File(dir, name) }
+    }
+
+    /** Logging configuration, stored inside the version folder. */
+    fun loggingConfigFile(versionId: String, fileName: String): File =
+        File(versionDirectory(versionId), sanitize(fileName))
+
+    /** Creates the full launcher layout. Safe to call repeatedly. */
+    fun prepareDirectories() {
+        listOf(
+            versionsDirectory(),
+            librariesDirectory(),
+            indexesDirectory(),
+            objectsDirectory(),
+            logsDirectory(),
+            runtimeDirectory()
+        ).forEach { it.mkdirs() }
+    }
+
+    fun readMetadata(versionId: String): InstalledVersionMetadata? {
+        val file = metadataFile(versionId)
+        if (!file.isFile) return null
+        return runCatching {
+            val obj = JSONObject(file.readText())
+            InstalledVersionMetadata(
+                version = obj.getString(KEY_VERSION),
+                installedAt = obj.getLong(KEY_INSTALLED_AT),
+                source = obj.optString(KEY_SOURCE),
+                installerVersion = obj.optInt(KEY_INSTALLER_VERSION, 0),
+                state = InstallState.valueOf(obj.getString(KEY_STATE))
+            )
+        }.getOrNull()
+    }
+
+    fun writeMetadata(metadata: InstalledVersionMetadata) {
+        val dir = versionDirectory(metadata.version)
+        dir.mkdirs()
+        val json = JSONObject()
+            .put(KEY_VERSION, metadata.version)
+            .put(KEY_INSTALLED_AT, metadata.installedAt)
+            .put(KEY_SOURCE, metadata.source)
+            .put(KEY_INSTALLER_VERSION, metadata.installerVersion)
+            .put(KEY_STATE, metadata.state.name)
+        metadataFile(metadata.version).writeText(json.toString())
+    }
+
+    /** Scans all version directories and returns id -> state. */
+    fun readInstallStates(): Map<String, InstallState> {
+        val dir = versionsDirectory()
+        if (!dir.isDirectory) return emptyMap()
+        return dir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { entry -> readMetadata(entry.name)?.let { it.version to it.state } }
+            ?.toMap()
+            ?: emptyMap()
+    }
+
+    /** Version ids become file/directory names; keep them filesystem-safe. */
+    private fun sanitize(versionId: String): String =
+        versionId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+    private companion object {
+        const val METADATA_FILE_NAME = "metadata.json"
+        const val KEY_VERSION = "version"
+        const val KEY_INSTALLED_AT = "installedAt"
+        const val KEY_SOURCE = "source"
+        const val KEY_INSTALLER_VERSION = "installerVersion"
+        const val KEY_STATE = "state"
+    }
+}

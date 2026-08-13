@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LumoCraft</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_accounts">Accounts</string>
+    <string name="nav_versions">Versions</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Home -->
+    <string name="home_tagline">Your lightweight Minecraft Java launcher</string>
+    <string name="home_play">Play</string>
+    <string name="home_play_unavailable">Minecraft launching will arrive in a future update.</string>
+    <string name="home_stat_profile">Offline profile</string>
+    <string name="home_stat_no_account">No account</string>
+    <string name="home_stat_versions">Versions</string>
+    <string name="home_stat_java">Java runtime</string>
+    <string name="home_stat_no_versions">None yet</string>
+    <string name="home_stat_no_runtime">Not installed</string>
+    <string name="home_planned_title">Planned features</string>
+    <string name="home_planned_chip_mods">Mods</string>
+    <string name="home_planned_chip_shaders">Shaders</string>
+    <string name="home_planned_chip_java">Java runtime</string>
+    <string name="home_footer_version">LumoCraft v%1$s</string>
+
+    <!-- Accounts -->
+    <string name="action_cancel">Cancel</string>
+    <string name="accounts_add_fab">Add Offline Account</string>
+    <string name="accounts_selected">Selected</string>
+    <string name="accounts_added_on">Added %1$s</string>
+    <string name="accounts_menu">Account options</string>
+    <string name="accounts_select">Select</string>
+    <string name="accounts_rename">Rename</string>
+    <string name="accounts_delete">Delete</string>
+    <string name="accounts_delete_title">Delete account?</string>
+    <string name="accounts_delete_message">Delete \"%1$s\"? This cannot be undone.</string>
+    <string name="accounts_delete_last_hint">You cannot delete your last account.</string>
+    <string name="accounts_create_title">Add Offline Account</string>
+    <string name="accounts_rename_title">Rename account</string>
+    <string name="accounts_username_label">Username</string>
+    <string name="accounts_username_hint">e.g. Steve_99</string>
+    <string name="accounts_empty_title">No accounts yet</string>
+    <string name="accounts_empty_description">Offline accounts are local launcher profiles. Add one to get ready — no sign-in or internet needed.</string>
+    <string name="accounts_avatar_description">Avatar of %1$s</string>
+    <string name="accounts_add">Add</string>
+    <string name="accounts_save">Save</string>
+    <string name="accounts_error_last_account">You cannot delete your last account.</string>
+    <string name="accounts_error_generic">Something went wrong. Please try again.</string>
+    <string name="error_username_too_short">Usernames need at least 3 characters</string>
+    <string name="error_username_too_long">Usernames can be at most 16 characters</string>
+    <string name="error_username_invalid">Only letters, numbers and underscores are allowed</string>
+    <string name="error_username_duplicate">This username already exists</string>
+    <plurals name="accounts_count">
+        <item quantity="one">%d account</item>
+        <item quantity="other">%d accounts</item>
+    </plurals>
+
+    <!-- Versions -->
+    <string name="version_filter_all">All</string>
+    <string name="version_filter_release">Release</string>
+    <string name="version_filter_snapshot">Snapshot</string>
+    <string name="version_filter_old_beta">Old Beta</string>
+    <string name="version_filter_old_alpha">Old Alpha</string>
+    <string name="version_type_release">Release</string>
+    <string name="version_type_snapshot">Snapshot</string>
+    <string name="version_type_old_beta">Beta</string>
+    <string name="version_type_old_alpha">Alpha</string>
+    <string name="version_type_unknown">Unknown</string>
+    <string name="versions_installed">Installed</string>
+    <string name="versions_pending">Pending</string>
+    <string name="versions_failed">Failed</string>
+    <string name="versions_corrupted">Corrupted</string>
+    <string name="versions_install">Install</string>
+    <string name="versions_install_done">Installed</string>
+    <string name="versions_installing">Installing…</string>
+    <string name="versions_repair">Repair</string>
+    <string name="versions_install_failed">Install failed. Check your connection and try again.</string>
+    <string name="versions_repair_failed">Repair failed. Check your connection and try again.</string>
+    <string name="versions_released_on">Released %1$s</string>
+    <string name="versions_percent">%d%%</string>
+    <string name="versions_bytes_progress">%1$s of %2$s</string>
+    <string name="versions_stage_preparing">Preparing</string>
+    <string name="versions_stage_version_json">Version JSON</string>
+    <string name="versions_stage_libraries">Libraries</string>
+    <string name="versions_stage_asset_index">Asset index</string>
+    <string name="versions_stage_assets">Assets</string>
+    <string name="versions_stage_logging_config">Logging config</string>
+    <string name="versions_stage_verification">Verification</string>
+    <string name="versions_stage_complete">Complete</string>
+    <string name="versions_search_placeholder">Search versions</string>
+    <string name="versions_search_clear">Clear search</string>
+    <string name="versions_retry">Retry</string>
+    <string name="versions_load_error">Couldn\'t load versions</string>
+    <string name="versions_load_error_hint">Check your internet connection and try again.</string>
+    <string name="versions_empty">No versions found</string>
+    <string name="versions_empty_hint">Try a different search term or filter.</string>
+    <plurals name="versions_count">
+        <item quantity="one">%d version</item>
+        <item quantity="other">%d versions</item>
+    </plurals>
+    <plurals name="versions_files_count">
+        <item quantity="one">%d file left</item>
+        <item quantity="other">%d files left</item>
+    </plurals>
+
+    <!-- Settings -->
+    <string name="settings_screen_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_section_launcher">Launcher</string>
+    <string name="settings_launcher_directory">Launcher directory</string>
+    <string name="settings_java_runtime">Java runtime</string>
+    <string name="settings_coming_soon">Coming soon</string>
+
+    <!-- Runtime -->
+    <string name="settings_section_runtime">Java Runtime</string>
+    <string name="runtime_architecture">Architecture</string>
+    <string name="runtime_not_installed">No Java runtime installed yet.</string>
+    <string name="runtime_install_java17">Install Java 17</string>
+    <string name="runtime_install_java21">Install Java 21</string>
+    <string name="runtime_installed">Installed</string>
+    <string name="runtime_missing">Missing</string>
+    <string name="runtime_verifying">Verifying…</string>
+    <string name="runtime_corrupted">Corrupted</string>
+    <string name="runtime_verify">Verify</string>
+    <string name="runtime_repair">Repair</string>
+    <string name="runtime_remove">Remove</string>
+    <string name="runtime_stage_preparing">Preparing</string>
+    <string name="runtime_stage_downloading">Downloading</string>
+    <string name="runtime_stage_extracting">Extracting</string>
+    <string name="runtime_stage_verifying">Verifying</string>
+    <string name="runtime_stage_complete">Complete</string>
+    <string name="runtime_ram_settings">RAM Allocation</string>
+    <string name="runtime_max_ram">Maximum RAM: %1$d MB</string>
+    <string name="runtime_min_ram">Minimum RAM: %1$d MB</string>
+    <string name="runtime_recommended_ram">Recommended: %1$d MB</string>
+</resources>

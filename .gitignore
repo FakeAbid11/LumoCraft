@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Kotlin
+.kotlin/
+
+# Android
+captures/
+.cxx/
+*.apk
+*.aab
+output-metadata.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
