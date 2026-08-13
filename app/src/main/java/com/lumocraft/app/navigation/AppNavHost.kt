@@ -8,13 +8,13 @@ import androidx.navigation.compose.composable
 import com.lumocraft.app.domain.model.ThemeMode
 import com.lumocraft.app.ui.accounts.AccountsScreen
 import com.lumocraft.app.ui.home.HomeScreen
+import com.lumocraft.app.ui.launch.LaunchScreen
 import com.lumocraft.app.ui.settings.SettingsScreen
 import com.lumocraft.app.ui.versions.VersionsScreen
 
 /**
- * NavHost wiring for all top-level destinations.
- * Leaf screens are registered here; deeper routes (launch flow, profile
- * details) will extend this host in later stages.
+ * NavHost wiring for all top-level destinations plus the plain launch
+ * route (not part of [LumoDestination], so the bottom bar is hidden).
  */
 @Composable
 fun AppNavHost(
@@ -29,7 +29,9 @@ fun AppNavHost(
         modifier = modifier
     ) {
         composable(LumoDestination.HOME.route) {
-            HomeScreen()
+            HomeScreen(
+                onPlay = { navController.navigate(LAUNCH_ROUTE) }
+            )
         }
         composable(LumoDestination.ACCOUNTS.route) {
             AccountsScreen()
@@ -43,5 +45,10 @@ fun AppNavHost(
                 onThemeModeChange = onThemeModeChange
             )
         }
+        composable(LAUNCH_ROUTE) {
+            LaunchScreen()
+        }
     }
 }
+
+private const val LAUNCH_ROUTE = "launch"

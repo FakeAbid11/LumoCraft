@@ -51,18 +51,20 @@ fun LumoCraftApp() {
                 )
             },
             bottomBar = {
-                LumoNavigationBar(
-                    currentDestination = currentDestination,
-                    onDestinationSelected = { destination ->
-                        navController.navigate(destination.route) {
-                            popUpTo(navController.graph.startDestinationId) {
-                                saveState = true
+                if (currentDestination != null) {
+                    LumoNavigationBar(
+                        currentDestination = currentDestination,
+                        onDestinationSelected = { destination ->
+                            navController.navigate(destination.route) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
-                    }
-                )
+                    )
+                }
             }
         ) { innerPadding ->
             AppNavHost(

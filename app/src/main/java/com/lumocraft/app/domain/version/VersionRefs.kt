@@ -4,12 +4,15 @@ package com.lumocraft.app.domain.version
  * A library to download, derived from a version JSON file.
  * [path] is Mojang's relative path inside `libraries/` (folder structure
  * preserved); [url] is the absolute download URL.
+ * [classifier] is the natives classifier when this library carries native
+ * code (`natives-linux`, ...), or null for plain jars.
  */
 data class LibraryRef(
     val path: String,
     val sha1: String?,
     val size: Long?,
-    val url: String
+    val url: String,
+    val classifier: String? = null
 )
 
 /** Asset index reference from a version JSON (`assetIndex`). */

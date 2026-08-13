@@ -4,20 +4,22 @@ LumoCraft is an original Android launcher for Minecraft: Java Edition — a
 lightweight, from-scratch launcher aimed at low-end devices, supporting local
 offline profiles. It is **not** a fork or clone of PojavLauncher.
 
-## Status: Phase 5 — Android Java Runtime Manager
+## Status: Phase 6 — Launch Pipeline
 
-Phase 5 adds a complete Java runtime management system: runtime detection,
-installation, verification, selection, removal, metadata, RAM configuration,
-JVM argument generation, and architecture detection. Nothing is launched yet.
+Phase 6 connects every existing system: the Home screen now validates launch
+readiness (account, runtime, version, libraries, assets), downloads the
+client jar on demand, builds the JVM + game arguments for vanilla Minecraft
+1.20.1, extracts native libraries, spawns `bin/java`, streams the session log
+to a live console and analyzes crashes.
 
 | Area | Current | Later |
 |---|---|---|
-| UI | Compose Home / Accounts / Versions / Settings screens (bottom navigation) | Launch progress, logs |
+| UI | Compose Home / Accounts / Versions / Settings screens (bottom navigation); full-screen Launch console (stages, live log, cancel/retry/open logs) | Touch controls, renderer overlay |
 | Accounts | Offline accounts: create/select/rename/delete, deterministic pixel avatars, SharedPreferences persistence | Microsoft sign-in |
-| Versions | Manifest browser (All/Release/Snapshot/Old Beta/Old Alpha filters + search), full vanilla install (version JSON, libraries, asset index, asset objects, logging config), install-state tracking, live progress, repair mode | Client jar, natives |
+| Versions | Manifest browser (All/Release/Snapshot/Old Beta/Old Alpha filters + search), full vanilla install (version JSON, libraries, asset index, asset objects, logging config), install-state tracking, live progress, repair mode | Fabric/Forge |
 | Runtime | Java runtime manager: install (Java 17/21), verify, repair, remove, architecture detection, RAM sliders, JVM args, metadata | Runtime selection UI |
 | Settings | Theme (system/light/dark, persisted), Java runtime section | Java args, download options, storage picker |
-| Launching | Placeholder (Play shows a notice) | Process spawning, JVM args |
+| Launching | Launch pipeline: validation, client jar fetch, classpath + JVM/game args, native extraction, process spawn, log streaming, crash analysis, offline UUID | Renderer glue (GLFW stub), Microsoft auth |
 
 ## Tech stack
 
@@ -64,20 +66,26 @@ LumoCraft/
 │       │   │   ├── avatar/               # deterministic pixel avatar generator
 │       │   │   ├── version/              # manifest models, InstallProgress/Stage, VersionRepository
 │       │   │   ├── runtime/              # RuntimeInfo, RuntimeRepository, JvmConfiguration
+│       │   │   ├── launch/               # LaunchContext, LaunchPipeline, LaunchProgress,
+│       │   │   │                         #   LaunchFailure/LaunchErrorType, OfflineUuid
 │       │   │   └── model/                # ThemeMode
 │       │   ├── data/
 │       │   │   ├── account/              # SharedPreferences account repository
 │       │   │   ├── network/              # HttpClient, Downloader (retry + progress), HashUtils
 │       │   │   ├── storage/              # StorageManager: .minecraft layout + metadata
-│       │   │   ├── preferences/          # theme preference store
+│       │   │   ├── preferences/          # theme + version preference stores
 │       │   │   ├── runtime/              # RuntimeInstaller, ArchiveExtractor, RuntimeVerifier,
 │       │   │   │                         #   DefaultRuntimeRepository
-│       │   │   └── version/              # ManifestService, VersionInstaller, LibraryInstaller,
-│       │   │                             #   AssetInstaller, VerificationService, DownloadTracker
-│       │   ├── navigation/               # LumoDestination enum + AppNavHost
+│       │   │   ├── version/              # ManifestService, VersionInstaller, LibraryInstaller,
+│       │   │   │                         #   AssetInstaller, VerificationService, DownloadTracker
+│       │   │   └── launch/               # ClasspathBuilder, LaunchArgumentBuilder,
+│       │   │                             #   NativeExtractor, ClientJarManager, LaunchValidator,
+│       │   │                             #   JavaLauncher, CrashAnalyzer, LauncherLogRepository,
+│       │   │                             #   DefaultLaunchPipeline
+│       │   ├── navigation/               # LumoDestination enum + AppNavHost (+ launch route)
 │       │   └── ui/
 │       │       ├── components/           # Navigation bar, small shared widgets
-│       │       └── home|accounts|settings|versions/   # feature screens
+│       │       └── home|accounts|settings|versions|launch/   # feature screens
 │       └── res/                          # strings, platform theme, adaptive icon
 ├── gradle/
 │   ├── libs.versions.toml               # version catalog
@@ -126,6 +134,24 @@ LumoCraft/
   id, version, arch, vendor, path, installedAt, isDefault, status, and an
   optional SHA-256 checksum. JVM configuration lives in a separate
   `jvm_config.json` next to it.
+- **Launch pipeline.** `LaunchPipeline` is a small UI-free interface
+  (StateFlow progress + log stream) implemented by `DefaultLaunchPipeline`:
+  environment prep → on-demand client jar download → validation → classpath
+  resolution (leaf-first `inheritsFrom` chain) → native extraction →
+  JVM/game argument building → `bin/java` process spawn → live log
+  streaming → crash analysis. Later phases (Fabric, Forge, renderer glue,
+  custom args) swap or extend this implementation without touching the UI.
+- **Offline identity.** `OfflineUuid` derives the standard
+  `OfflinePlayer:<name>` MD5 UUID (RFC 4122 v3, no dashes), so the same
+  username maps to the same UUID everywhere.
+- **Natives.** `NativeExtractor` flattens only the device's architecture
+  subdirectory (`linux/arm64`, `linux/arm32`, root for x86_64) out of the
+  multi-arch LWJGL jars into the version's `natives` directory; LWJGL
+  self-extracts the rest on first use.
+- **Session logs.** Every launch writes `logs/launcher-<timestamp>.log`; the
+  same lines stream to the Launch console through a replaying
+  `SharedFlow`. Logs are shared via a FileProvider (`*.logs` authority)
+  from the "Open logs" action.
 
 ## Building locally
 
@@ -195,11 +221,14 @@ Completed:
 - **Android Java Runtime Manager** — runtime detection, installation
   (Java 17/21), verification, selection, removal, metadata, RAM
   configuration, JVM argument generation, architecture detection
+- **Launch pipeline** — Home readiness gating, version picker, client jar
+  fetch, classpath + JVM/game args, native extraction, Java process spawn,
+  live console, crash analysis, offline UUID, session logs + FileProvider
 
 Next phases, in order:
 
-1. **Launch pipeline** — build JVM args from settings, spawn the game process,
-   capture logs, handle stop/restart
+1. **Renderer glue** — GLFW stub + touchscreen input so the game window
+   actually renders on Android
 2. **Settings expansion** — game memory slider, download options, storage
    location picker
 3. **Storage management** — per-directory size display and cleanup

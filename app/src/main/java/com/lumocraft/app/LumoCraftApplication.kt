@@ -2,6 +2,16 @@ package com.lumocraft.app
 
 import android.app.Application
 import com.lumocraft.app.data.account.SharedPreferencesAccountRepository
+import com.lumocraft.app.data.launch.ClasspathBuilder
+import com.lumocraft.app.data.launch.ClientJarManager
+import com.lumocraft.app.data.launch.CrashAnalyzer
+import com.lumocraft.app.data.launch.DefaultLaunchPipeline
+import com.lumocraft.app.data.launch.JavaLauncher
+import com.lumocraft.app.data.launch.LaunchArgumentBuilder
+import com.lumocraft.app.data.launch.LaunchEnvironment
+import com.lumocraft.app.data.launch.LauncherLogRepository
+import com.lumocraft.app.data.launch.LaunchValidator
+import com.lumocraft.app.data.launch.NativeExtractor
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.network.HttpClient
 import com.lumocraft.app.data.runtime.ArchiveExtractor
@@ -16,6 +26,8 @@ import com.lumocraft.app.data.version.ManifestService
 import com.lumocraft.app.data.version.VerificationService
 import com.lumocraft.app.data.version.VersionInstaller
 import com.lumocraft.app.domain.account.AccountRepository
+import com.lumocraft.app.domain.launch.LaunchContext
+import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.runtime.RuntimeRepository
 import com.lumocraft.app.domain.version.VersionRepository
 
@@ -30,9 +42,13 @@ class LumoCraftApplication : Application() {
         SharedPreferencesAccountRepository(this)
     }
 
+    val storageManager: StorageManager by lazy {
+        StorageManager(this)
+    }
+
     val versionRepository: VersionRepository by lazy {
         val client = HttpClient()
-        val storage = StorageManager(this)
+        val storage = storageManager
         val downloader = Downloader(client)
         DefaultVersionRepository(
             manifestService = ManifestService(client),
@@ -49,7 +65,7 @@ class LumoCraftApplication : Application() {
 
     val runtimeRepository: RuntimeRepository by lazy {
         val client = HttpClient()
-        val storage = StorageManager(this)
+        val storage = storageManager
         val downloader = Downloader(client)
         val extractor = ArchiveExtractor()
         DefaultRuntimeRepository(
@@ -58,4 +74,34 @@ class LumoCraftApplication : Application() {
             verifier = RuntimeVerifier()
         )
     }
+
+    val launcherLogRepository: LauncherLogRepository by lazy {
+        LauncherLogRepository(storageManager)
+    }
+
+    val launchValidator: LaunchValidator by lazy {
+        LaunchValidator(storageManager, RuntimeVerifier())
+    }
+
+    val launchPipeline: LaunchPipeline by lazy {
+        val storage = storageManager
+        val downloader = Downloader(HttpClient())
+        DefaultLaunchPipeline(
+            environment = LaunchEnvironment(storage),
+            validator = launchValidator,
+            classpathBuilder = ClasspathBuilder(storage),
+            argumentBuilder = LaunchArgumentBuilder(storage),
+            clientJarManager = ClientJarManager(storage, downloader),
+            nativeExtractor = NativeExtractor(storage),
+            launcher = JavaLauncher(),
+            crashAnalyzer = CrashAnalyzer(),
+            logs = launcherLogRepository
+        )
+    }
+
+    /**
+     * The launch request carried from the Home screen into the Launch
+     * screen, set just before navigation; cleared once consumed.
+     */
+    var pendingLaunchContext: LaunchContext? = null
 }

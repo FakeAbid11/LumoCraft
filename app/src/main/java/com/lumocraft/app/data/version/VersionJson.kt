@@ -44,7 +44,11 @@ object VersionJson {
 
             val downloads = entry.optJSONObject("downloads")
             var artifact = downloads?.optJSONObject("artifact")
-            entry.optJSONObject("natives")?.optString(osName)?.let { classifier ->
+            val natives = entry.optJSONObject("natives")
+            val classifier = natives?.optString(osName)?.takeIf { it.isNotEmpty() }
+                ?: entry.optString("name").substringAfterLast(':')
+                    .takeIf { it.startsWith("natives-") }
+            if (classifier != null && natives != null) {
                 artifact = downloads?.optJSONObject("classifiers")?.optJSONObject(classifier)
             }
 
@@ -58,8 +62,36 @@ object VersionJson {
                 path = path,
                 sha1 = artifact?.optString("sha1")?.takeIf { it.isNotEmpty() },
                 size = artifact?.optLong("size", -1L)?.takeIf { it >= 0 },
-                url = url
+                url = url,
+                classifier = classifier
             )
+        }
+        return result
+    }
+
+    /**
+     * Resolves an argument array (plain strings plus rule-wrapped values)
+     * into the flat list of arguments this device receives: OS rules are
+     * applied, feature-based entries are skipped.
+     */
+    fun resolveArguments(array: JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        val result = mutableListOf<String>()
+        for (i in 0 until array.length()) {
+            when (val entry = array.opt(i)) {
+                is String -> result += entry
+                is JSONObject -> {
+                    if (!rulesAllow(entry.optJSONArray("rules"))) continue
+                    when (val value = entry.opt("value")) {
+                        is String -> result += value
+                        is JSONArray -> {
+                            for (j in 0 until value.length()) {
+                                value.opt(j)?.let { result += it.toString() }
+                            }
+                        }
+                    }
+                }
+            }
         }
         return result
     }

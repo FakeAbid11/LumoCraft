@@ -11,7 +11,13 @@
     <!-- Home -->
     <string name="home_tagline">Your lightweight Minecraft Java launcher</string>
     <string name="home_play">Play</string>
-    <string name="home_play_unavailable">Minecraft launching will arrive in a future update.</string>
+    <string name="home_play_unavailable">Can\'t launch right now.</string>
+    <string name="home_play_need_account">Add an offline account to play.</string>
+    <string name="home_play_need_runtime">Install a Java runtime first (Settings → Java Runtime).</string>
+    <string name="home_play_need_version">Install a Minecraft version first (Versions tab).</string>
+    <string name="home_play_need_repair">Some game files are missing — repair the version in the Versions tab.</string>
+    <string name="home_version_selection">Version</string>
+    <string name="home_version_none">No installed versions</string>
     <string name="home_stat_profile">Offline profile</string>
     <string name="home_stat_no_account">No account</string>
     <string name="home_stat_versions">Versions</string>
@@ -138,4 +144,35 @@
     <string name="runtime_max_ram">Maximum RAM: %1$d MB</string>
     <string name="runtime_min_ram">Minimum RAM: %1$d MB</string>
     <string name="runtime_recommended_ram">Recommended: %1$d MB</string>
+
+    <!-- Launch -->
+    <string name="launch_title">Launching %1$s</string>
+    <string name="launch_title_unknown">Launch session</string>
+    <string name="launch_console_title">Console</string>
+    <string name="launch_stage_preparing">Preparing launch environment</string>
+    <string name="launch_stage_validating">Validating installation</string>
+    <string name="launch_stage_classpath">Building classpath</string>
+    <string name="launch_stage_arguments">Building launch arguments</string>
+    <string name="launch_stage_starting">Starting Java</string>
+    <string name="launch_stage_running">Minecraft is running</string>
+    <string name="launch_stage_finished">Game closed</string>
+    <string name="launch_stage_failed">Launch failed</string>
+    <string name="launch_stage_idle">Ready</string>
+    <string name="launch_cancel">Cancel</string>
+    <string name="launch_retry">Retry</string>
+    <string name="launch_open_logs">Open logs</string>
+    <string name="launch_logs_unavailable">No session log on disk yet.</string>
+    <string name="launch_error_account">No offline account selected.</string>
+    <string name="launch_error_runtime">Java runtime is missing or damaged.</string>
+    <string name="launch_error_version">Minecraft version is not installed.</string>
+    <string name="launch_error_libraries">Required libraries are missing.</string>
+    <string name="launch_error_assets">Required game assets are missing.</string>
+    <string name="launch_error_client_jar">The client jar could not be obtained.</string>
+    <string name="launch_error_main_class">The main class could not be loaded.</string>
+    <string name="launch_error_native">A native library could not be loaded — this build needs the renderer glue to run the game.</string>
+    <string name="launch_error_classpath">The classpath could not be resolved.</string>
+    <string name="launch_error_jvm">The Java virtual machine failed to start.</string>
+    <string name="launch_error_crashed">Minecraft crashed. Check the console and session log for details.</string>
+    <string name="launch_error_cancelled">Launch was cancelled.</string>
+    <string name="launch_error_unknown">An unexpected error occurred.</string>
 </resources>
