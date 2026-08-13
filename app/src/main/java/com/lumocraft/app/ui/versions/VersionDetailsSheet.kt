@@ -191,7 +191,6 @@ private fun InstallProgressSection(progress: InstallProgress) {
                     .fillMaxWidth()
                     .height(6.dp)
             )
-            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
