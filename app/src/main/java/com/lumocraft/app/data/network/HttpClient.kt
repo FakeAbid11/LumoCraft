@@ -122,7 +122,7 @@ class HttpClient(
                     }
                 }
             }
-            destination
+            return destination
         } finally {
             connection.disconnect()
         }
