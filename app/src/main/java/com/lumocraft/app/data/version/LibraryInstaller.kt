@@ -1,6 +1,7 @@
 package com.lumocraft.app.data.version
 
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.data.network.DownloadScheduler
 import com.lumocraft.app.data.network.HashUtils
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.storage.StorageManager
@@ -23,13 +24,14 @@ import org.json.JSONObject
  *   during download and in the later verification stage)
  * - each download is verified by SHA-1 and size before being renamed into
  *   place (atomic per file, no half-written files)
- * - downloads run in parallel with a fixed concurrency limit
+ * - downloads run in parallel with adaptive concurrency (device tier +
+ *   measured bandwidth) and resume partial files via Range requests
  * - failures cancel the remaining batch and fail the whole stage
  */
 class LibraryInstaller(
     private val storage: StorageManager,
     private val downloader: Downloader,
-    private val concurrency: Int = AppConfig.DOWNLOAD_CONCURRENCY,
+    private val scheduler: DownloadScheduler? = null,
 ) {
 
     /**
@@ -59,6 +61,7 @@ class LibraryInstaller(
                 totalBytes = needed.sumOf { it.size ?: 0L },
                 listener = onProgress
             )
+            val concurrency = scheduler?.concurrency() ?: AppConfig.DOWNLOAD_CONCURRENCY
             coroutineScope {
                 needed.chunked(concurrency).forEach { chunk ->
                     chunk.map { lib -> async { downloadLibrary(lib, tracker) } }
@@ -83,7 +86,7 @@ class LibraryInstaller(
         val destination = storage.libraryFile(lib.path)
         val temp = File(destination.parentFile, ".${destination.name}.part")
         var lastFraction = 0f
-        val result = downloader.download(lib.url, temp) { fraction ->
+        val result = downloader.downloadResumable(lib.url, temp) { fraction ->
             fraction?.let { f ->
                 val delta = ((f - lastFraction) * (lib.size ?: 0L)).toLong()
                 lastFraction = f

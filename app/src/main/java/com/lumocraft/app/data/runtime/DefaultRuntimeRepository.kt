@@ -2,6 +2,7 @@ package com.lumocraft.app.data.runtime
 
 import android.os.Build
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.data.performance.RuntimeCache
 import com.lumocraft.app.data.storage.StorageManager
 import com.lumocraft.app.domain.runtime.JvmConfiguration
 import com.lumocraft.app.domain.runtime.RuntimeArchitecture
@@ -25,11 +26,13 @@ import org.json.JSONObject
  * [RuntimeRepository] backed by [StorageManager] metadata and the
  * [RuntimeInstaller]/[RuntimeVerifier] pipeline. The UI only observes
  * [observeRuntimes]; all mutations re-sync the state flow from disk.
+ * A [RuntimeCache] avoids re-verifying unchanged runtimes.
  */
 class DefaultRuntimeRepository(
     private val storage: StorageManager,
     private val installer: RuntimeInstaller,
     private val verifier: RuntimeVerifier,
+    private val runtimeCache: RuntimeCache? = null,
 ) : RuntimeRepository {
 
     private val _runtimes = MutableStateFlow(readRuntimesFromDisk())
@@ -42,9 +45,14 @@ class DefaultRuntimeRepository(
         val runtime = _runtimes.value.firstOrNull { it.isDefault && it.status == RuntimeStatus.INSTALLED }
             ?: _runtimes.value.firstOrNull { it.status == RuntimeStatus.INSTALLED }
             ?: return null
-        // Phase 6 compatibility: always return a fully verified runtime.
+        // Skip re-verification for runtimes validated recently.
+        if (runtimeCache?.isFresh(runtime) == true) return runtime
         val report = verifier.verify(runtime)
-        if (report.ok) return runtime
+        if (report.ok) {
+            runtimeCache?.markValidated(runtime)
+            return runtime
+        }
+        runtimeCache?.invalidate()
         val updated = runtime.copy(status = RuntimeStatus.CORRUPTED)
         writeRuntimeMetadata(updated)
         _runtimes.value = readRuntimesFromDisk()
@@ -92,6 +100,7 @@ class DefaultRuntimeRepository(
                     isDefault = shouldBeDefault,
                     status = if (report.ok) RuntimeStatus.INSTALLED else RuntimeStatus.CORRUPTED
                 )
+                if (report.ok) runtimeCache?.markValidated(verified)
                 writeRuntimeMetadata(verified)
                 _runtimes.value = readRuntimesFromDisk()
             }
@@ -102,6 +111,7 @@ class DefaultRuntimeRepository(
 
     override suspend fun remove(runtimeId: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            runtimeCache?.invalidate()
             val removedWasDefault = _runtimes.value.any { it.id == runtimeId && it.isDefault }
             val dir = storage.runtimeDirectoryFor(runtimeId)
             dir.deleteRecursively()
@@ -125,6 +135,7 @@ class DefaultRuntimeRepository(
         val updated = runtime.copy(
             status = if (report.ok) RuntimeStatus.INSTALLED else RuntimeStatus.CORRUPTED
         )
+        if (report.ok) runtimeCache?.markValidated(updated)
         writeRuntimeMetadata(updated)
         _runtimes.value = readRuntimesFromDisk()
         return Result.success(report)
@@ -132,6 +143,7 @@ class DefaultRuntimeRepository(
 
     override fun repair(runtimeId: String): Flow<RuntimeProgress> = flow {
         try {
+            runtimeCache?.invalidate()
             val runtime = _runtimes.value.firstOrNull { it.id == runtimeId }
             if (runtime == null) {
                 emit(
@@ -146,6 +158,7 @@ class DefaultRuntimeRepository(
             val report = verifier.verify(runtime)
             if (report.ok) {
                 val updated = runtime.copy(status = RuntimeStatus.INSTALLED)
+                runtimeCache?.markValidated(updated)
                 writeRuntimeMetadata(updated)
                 _runtimes.value = readRuntimesFromDisk()
                 emit(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, 1f))
@@ -177,6 +190,7 @@ class DefaultRuntimeRepository(
                 val verified = info.copy(
                     status = if (verifyReport.ok) RuntimeStatus.INSTALLED else RuntimeStatus.CORRUPTED
                 )
+                if (verifyReport.ok) runtimeCache?.markValidated(verified)
                 writeRuntimeMetadata(verified)
                 _runtimes.value = readRuntimesFromDisk()
             }

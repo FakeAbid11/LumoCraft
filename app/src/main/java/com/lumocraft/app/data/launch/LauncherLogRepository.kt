@@ -150,6 +150,54 @@ class LauncherLogRepository(private val storage: StorageManager) {
         writeLine("Control layout loaded for profile $profileId — $controlCount buttons")
     }
 
+    /** Logs the device profile that drives all optimization decisions. */
+    suspend fun logMemoryProfile(profile: com.lumocraft.app.domain.performance.DeviceProfile) {
+        writeSection("Performance")
+        writeLine(
+            "Device: ${profile.tier.name.lowercase()} tier " +
+                "(${profile.totalRamMB} MB RAM, ${profile.cpuCores} cores, " +
+                "Android ${profile.androidRelease} (SDK ${profile.androidSdk}), " +
+                "low-ram=${profile.lowRamDevice}, ${profile.architecture.abi})"
+        )
+        writeLine("Recommended RAM: ${profile.recommendedMaxRamMB()} MB")
+    }
+
+    /** Logs the JVM profile selection (automatic or overridden). */
+    suspend fun logJvmProfileSelection(profile: com.lumocraft.app.domain.performance.JvmProfile, automatic: Boolean) {
+        writeLine(
+            "JVM profile: ${profile.displayName} " +
+                "(${if (automatic) "automatic" else "manual override"})"
+        )
+    }
+
+    /** Logs a cache hit/miss for one launch cache kind. */
+    suspend fun logCacheEvent(kind: String, hit: Boolean, detail: String) {
+        writeLine("Cache ${if (hit) "hit" else "miss"}: $kind — $detail")
+    }
+
+    /** Logs the launch phase timings once per session. */
+    suspend fun logLaunchTiming(
+        validationMs: Long,
+        classpathMs: Long,
+        jvmStartMs: Long,
+        totalMs: Long,
+        cacheHits: Int,
+        cacheMisses: Int,
+        cachedValidation: Boolean,
+    ) {
+        writeLine(
+            "Launch timing: validation=${validationMs} ms" +
+                "${if (cachedValidation) " (cached)" else ""}, " +
+                "classpath=${classpathMs} ms, jvm start=${jvmStartMs} ms, " +
+                "total=${totalMs} ms (cache hits=$cacheHits, misses=$cacheMisses)"
+        )
+    }
+
+    /** Logs an optimization decision (e.g. adaptive concurrency changes). */
+    suspend fun logOptimizationDecision(message: String) {
+        writeLine("Optimization: $message")
+    }
+
     /** Closes the session file; the file stays on disk. */
     fun endSession() {
         writer?.close()

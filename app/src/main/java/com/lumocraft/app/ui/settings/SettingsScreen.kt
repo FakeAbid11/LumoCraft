@@ -14,6 +14,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -38,6 +39,7 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onEditLayout: () -> Unit,
     onPreviewControls: () -> Unit,
+    onOpenPerformance: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -55,6 +57,9 @@ fun SettingsScreen(
         }
         RuntimeSettingsSection()
         RendererSettingsSection()
+        SettingsSection(title = stringResource(R.string.settings_section_performance)) {
+            PerformanceEntryRow(onOpenPerformance)
+        }
         InputSettingsSection(
             onEditLayout = onEditLayout,
             onPreviewControls = onPreviewControls
@@ -63,6 +68,24 @@ fun SettingsScreen(
             ComingSoonRow(label = stringResource(R.string.settings_launcher_directory))
         }
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun PerformanceEntryRow(
+    onOpenPerformance: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onOpenPerformance,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.performance_open_dashboard),
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 

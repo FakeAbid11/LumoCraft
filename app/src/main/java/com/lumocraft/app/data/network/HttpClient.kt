@@ -17,7 +17,9 @@ class HttpStatusException(val code: Int) : IOException("HTTP $code")
  * no third-party networking library needed.
  *
  * All calls run on [Dispatchers.IO], honour coroutine cancellation and map
- * failures into [Result]. Download supports progress callbacks.
+ * failures into [Result]. [download] supports progress callbacks;
+ * [downloadResumable] resumes partial files via HTTP Range requests and
+ * keeps the partial file on failure so interrupted downloads can resume.
  */
 class HttpClient(
     private val connectTimeoutMs: Int = AppConfig.HTTP_CONNECT_TIMEOUT_MS,
@@ -49,43 +51,90 @@ class HttpClient(
         runCatching {
             destination.parentFile?.mkdirs()
             destination.delete()
-            val connection = openConnection(url)
-            try {
-                val total = connection.contentLengthLong.takeIf { it > 0 }
-                connection.inputStream.use { input ->
-                    destination.outputStream().use { output ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        var downloaded = 0L
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            output.write(buffer, 0, read)
-                            downloaded += read
-                            if (total != null) {
-                                onProgress(downloaded.toFloat() / total)
-                            } else {
-                                onProgress(null)
-                            }
-                        }
-                    }
-                }
-            } finally {
-                connection.disconnect()
-            }
-            destination
+            downloadTo(url, destination, resumeFrom = 0, onProgress)
         }.onFailure { _ ->
             destination.delete()
         }.rethrowCancellation()
     }
 
-    private fun openConnection(url: String): HttpURLConnection {
+    /**
+     * Downloads a URL to [destination], resuming from the existing
+     * partial file via a Range request. The partial file is kept on
+     * failure so a later call can continue. When the server does not
+     * support ranges (HTTP 200 instead of 206) or the range is
+     * unsatisfiable (416), the partial file is discarded and the
+     * download restarts from scratch.
+     */
+    suspend fun downloadResumable(
+        url: String,
+        destination: File,
+        onProgress: suspend (Float?) -> Unit = {},
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            destination.parentFile?.mkdirs()
+            val resumeFrom = destination.length()
+            try {
+                downloadTo(url, destination, resumeFrom, onProgress)
+            } catch (e: ResumeUnsupported) {
+                // Server ignored the Range header: start over.
+                destination.delete()
+                downloadTo(url, destination, 0, onProgress)
+            } catch (e: HttpStatusException) {
+                if (e.code != HttpURLConnection.HTTP_NOT_SATISFIABLE) throw e
+                // Partial file is complete or longer than the remote file.
+                destination.delete()
+                downloadTo(url, destination, 0, onProgress)
+            }
+        }.rethrowCancellation()
+    }
+
+    private suspend fun downloadTo(
+        url: String,
+        destination: File,
+        resumeFrom: Long,
+        onProgress: suspend (Float?) -> Unit,
+    ) {
+        val connection = openConnection(url, resumeFrom.takeIf { it > 0 })
+        try {
+            val code = connection.responseCode
+            if (resumeFrom > 0 && code == HttpURLConnection.HTTP_OK) {
+                throw ResumeUnsupported()
+            }
+            val total = connection.contentLengthLong.takeIf { it > 0 }
+            val absoluteTotal = total?.plus(resumeFrom)
+            connection.inputStream.use { input ->
+                destination.outputStream(append = resumeFrom > 0).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var downloaded = resumeFrom
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        downloaded += read
+                        if (absoluteTotal != null) {
+                            onProgress(downloaded.toFloat() / absoluteTotal)
+                        } else {
+                            onProgress(null)
+                        }
+                    }
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun openConnection(url: String, rangeStart: Long? = null): HttpURLConnection {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = connectTimeoutMs
             readTimeout = readTimeoutMs
             requestMethod = "GET"
             setRequestProperty("User-Agent", AppConfig.USER_AGENT)
             setRequestProperty("Accept-Encoding", "identity")
+            if (rangeStart != null) {
+                setRequestProperty("Range", "bytes=$rangeStart-")
+            }
         }
         val code = connection.responseCode
         if (code !in 200..299) {
@@ -94,6 +143,8 @@ class HttpClient(
         }
         return connection
     }
+
+    private class ResumeUnsupported : IOException("Server does not support Range requests")
 
     private companion object {
         const val DEFAULT_BUFFER_SIZE = 16 * 1024

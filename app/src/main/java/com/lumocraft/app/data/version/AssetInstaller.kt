@@ -1,6 +1,7 @@
 package com.lumocraft.app.data.version
 
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.data.network.DownloadScheduler
 import com.lumocraft.app.data.network.HashUtils
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.storage.StorageManager
@@ -32,12 +33,13 @@ private data class AssetEntry(val hash: String, val size: Long)
  * - objects        -> assets/objects/<hash[0..2]>/<hash>
  * - skip existing objects whose size matches the index (their file name is
  *   their hash, so a size match is as good as a hash match)
- * - hash verified before rename, parallel with a concurrency limit
+ * - hash verified before rename, parallel with adaptive concurrency
+ *   (device tier + measured bandwidth) and resumable partial files
  */
 class AssetInstaller(
     private val storage: StorageManager,
     private val downloader: Downloader,
-    private val concurrency: Int = AppConfig.DOWNLOAD_CONCURRENCY,
+    private val scheduler: DownloadScheduler? = null,
 ) {
 
     internal suspend fun downloadIndex(
@@ -121,6 +123,7 @@ class AssetInstaller(
                 return@withContext Result.success(Unit)
             }
             val tracker = DownloadTracker(needed.size, data.totalSize, onProgress)
+            val concurrency = scheduler?.concurrency() ?: AppConfig.DOWNLOAD_CONCURRENCY
             coroutineScope {
                 needed.chunked(concurrency).forEach { chunk ->
                     chunk.map { entry -> async { downloadObject(entry, tracker) } }
@@ -146,7 +149,7 @@ class AssetInstaller(
         val temp = File(destination.parentFile, "${entry.hash}.part")
         var lastFraction = 0f
         val url = AppConfig.ASSETS_BASE_URL + entry.hash.take(2) + "/" + entry.hash
-        val result = downloader.download(url, temp) { fraction ->
+        val result = downloader.downloadResumable(url, temp) { fraction ->
             fraction?.let { f ->
                 val delta = ((f - lastFraction) * entry.size).toLong()
                 lastFraction = f

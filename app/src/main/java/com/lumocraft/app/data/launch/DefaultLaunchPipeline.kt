@@ -11,6 +11,9 @@ import com.lumocraft.app.domain.launch.LaunchValidationReport
 import com.lumocraft.app.domain.native.NativeException
 import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.native.NativeStatus
+import com.lumocraft.app.domain.performance.LaunchCacheEntry
+import com.lumocraft.app.domain.performance.PerformanceManager
+import com.lumocraft.app.domain.performance.LaunchTimings
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +24,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Reference [LaunchPipeline]: validates, prepares (including native
@@ -29,6 +34,11 @@ import kotlinx.coroutines.launch
  * spawns the Java process and streams its output into the session log.
  * Any terminal state leaves the session log file on disk for the
  * "Open logs" action.
+ *
+ * Phase 9: validation is cached through [PerformanceManager.verifier],
+ * classpath and launch arguments come from the launch cache when their
+ * fingerprints match, every phase is measured by the launch profiler and
+ * the memory optimizer pool is released after the session.
  */
 class DefaultLaunchPipeline(
     private val environment: LaunchEnvironment,
@@ -40,6 +50,7 @@ class DefaultLaunchPipeline(
     private val launcher: JavaLauncher,
     private val crashAnalyzer: CrashAnalyzer,
     private val logs: LauncherLogRepository,
+    private val performance: PerformanceManager,
     /**
      * Injectable input snapshot for the session. The [LaunchPipeline]
      * interface is unchanged; a provider keeps this decoupled until
@@ -70,6 +81,11 @@ class DefaultLaunchPipeline(
 
     private suspend fun runSession(context: LaunchContext) {
         _state.value = LaunchProgress(LaunchState.PREPARING, "Preparing launch environment")
+        val sessionStartNanos = System.nanoTime()
+        val sessionStartMillis = System.currentTimeMillis()
+        val cache = performance.cache()
+        val hitsBefore = cache.hits()
+        val missesBefore = cache.misses()
         val sessionFile = logs.startSession()
         writeLauncherLine("Session started: ${context.account.username} on ${context.versionId}")
         writeLauncherLine("Session log: ${sessionFile.absolutePath}")
@@ -77,9 +93,15 @@ class DefaultLaunchPipeline(
         var process: JavaProcessHandle? = null
         var failure: LaunchFailure? = null
         var exitCode: Int? = null
+        var validationMs = 0L
+        var classpathMs = 0L
+        var jvmStartMs = 0L
+        var cachedValidation = false
         try {
             environment.prepare()
             logs.logArchitecture(nativeRuntimeManager.architecture().abi)
+            logs.logMemoryProfile(performance.deviceProfile())
+            logs.logJvmProfileSelection(performance.effectiveJvmProfile(), performance.jvmProfileOverride() == null)
 
             _state.value = LaunchProgress(LaunchState.PREPARING, "Fetching client jar")
             clientJarManager.ensure(context.versionId).getOrElse { throw it }
@@ -89,15 +111,23 @@ class DefaultLaunchPipeline(
             _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Preparing native libraries")
             prepareNatives(context.versionId)
 
+            val validationStart = System.nanoTime()
             _state.value = LaunchProgress(LaunchState.VALIDATING, "Validating installation")
             val report = validator.validate(context)
+            validationMs = elapsedMs(validationStart)
             if (!report.ok) throw LaunchException(validationFailureMessage(report))
+            cachedValidation = report.fromCache
+            logs.logCacheEvent("validation", cachedValidation, context.versionId)
+            markRuntimeValidated(context.versionId)
             writeLauncherLine("Validation passed")
 
             inputConfiguration()?.let { config -> logs.logInputConfiguration(config) }
 
+            val classpathStart = System.nanoTime()
             _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Resolving classpath")
             val built = classpathBuilder.build(context.versionId).getOrElse { throw it }
+            classpathMs = elapsedMs(classpathStart)
+            logs.logCacheEvent("classpath", builtFromCache(built), "${built.libraryFiles.size} libraries")
             writeLauncherLine(
                 "Classpath: ${built.libraryFiles.size} libraries, main class ${built.mainClass}"
             )
@@ -111,14 +141,15 @@ class DefaultLaunchPipeline(
             val resolution = rendererProfile.effectiveResolution()
             logs.logResolution(resolution.width, resolution.height, rendererProfile.resolutionScale.percent)
 
-            val args = argumentBuilder.build(
+            val args = resolveArguments(
                 context = context,
                 classpath = built.classpath,
                 environment = environment,
                 nativesDirectory = nativesDirectory,
                 jniEnvironment = jniEnvironment,
-                rendererProfile = rendererProfile
-            ).getOrElse { throw it }
+                rendererProfile = rendererProfile,
+                logs = logs
+            )
 
             val javaHome = File(context.runtime.path)
             _state.value = LaunchProgress(LaunchState.STARTING_JAVA, "Starting Java")
@@ -133,7 +164,9 @@ class DefaultLaunchPipeline(
                 environment = environment.buildProcessEnvironment(javaHome)
             )
 
+            val startNanos = System.nanoTime()
             process = launcher.start(command)
+            jvmStartMs = elapsedMs(startNanos)
             _state.value = LaunchProgress(LaunchState.RUNNING, "Minecraft is running")
             exitCode = process.stream { line -> logs.writeLine(line) }
 
@@ -160,6 +193,32 @@ class DefaultLaunchPipeline(
             writeLauncherLine("Launch failed: ${error.message}")
             process?.cancel()
         } finally {
+            val totalMs = elapsedMs(sessionStartNanos)
+            val hits = (cache.hits() - hitsBefore).toInt().coerceAtLeast(0)
+            val misses = (cache.misses() - missesBefore).toInt().coerceAtLeast(0)
+            logs.logLaunchTiming(
+                validationMs = validationMs,
+                classpathMs = classpathMs,
+                jvmStartMs = jvmStartMs,
+                totalMs = totalMs,
+                cacheHits = hits,
+                cacheMisses = misses,
+                cachedValidation = cachedValidation
+            )
+            performance.profiler().record(
+                LaunchTimings(
+                    validationMs = validationMs,
+                    classpathMs = classpathMs,
+                    jvmStartMs = jvmStartMs,
+                    totalMs = totalMs,
+                    cachedValidation = cachedValidation,
+                    cacheHits = hits,
+                    cacheMisses = misses,
+                    success = failure == null,
+                    startedAt = sessionStartMillis
+                )
+            )
+            performance.memory().cleanupAfterLaunch()
             logs.endSession()
             if (failure != null) {
                 _state.value = LaunchProgress(LaunchState.FAILED, null, exitCode, failure)
@@ -167,6 +226,117 @@ class DefaultLaunchPipeline(
             job = null
         }
     }
+
+    /** Cached arguments when the fingerprint matches; otherwise rebuilt. */
+    private suspend fun resolveArguments(
+        context: LaunchContext,
+        classpath: String,
+        environment: LaunchEnvironment,
+        nativesDirectory: File,
+        jniEnvironment: Map<String, String>,
+        rendererProfile: com.lumocraft.app.domain.native.RendererProfile,
+        logs: LauncherLogRepository,
+    ): LaunchArguments {
+        val resolvedConfig = performance.resolveJvmConfiguration(context.jvmConfiguration)
+        val fingerprint = argumentFingerprint(
+            context = context,
+            classpath = classpath,
+            jniEnvironment = jniEnvironment,
+            rendererProfile = rendererProfile,
+            resolvedConfig = resolvedConfig
+        )
+        val cache = performance.cache()
+        val cached = cache.getEntry(context.versionId)
+            ?.takeIf { it.launchArgumentsFingerprint == fingerprint && it.launchArgumentsJson != null }
+        val decoded = cached?.let { decodeArguments(it.launchArgumentsJson!!) }
+        if (decoded != null) {
+            cache.recordHit()
+            logs.logCacheEvent("arguments", true, context.versionId)
+            return decoded
+        }
+        if (cached != null) {
+            // Corrupt payload: drop the row so the next launch rebuilds it.
+            cache.removeEntry(context.versionId)
+        }
+        cache.recordMiss()
+        logs.logCacheEvent("arguments", false, context.versionId)
+        val args = argumentBuilder.build(
+            context = context.copy(jvmConfiguration = resolvedConfig),
+            classpath = classpath,
+            environment = environment,
+            nativesDirectory = nativesDirectory,
+            jniEnvironment = jniEnvironment,
+            rendererProfile = rendererProfile
+        ).getOrElse { throw it }
+        val base = cache.getEntry(context.versionId) ?: LaunchCacheEntry(context.versionId)
+        cache.putEntry(
+            base.copy(
+                launchArgumentsFingerprint = fingerprint,
+                launchArgumentsJson = encodeArguments(args)
+            )
+        )
+        return args
+    }
+
+    private fun argumentFingerprint(
+        context: LaunchContext,
+        classpath: String,
+        jniEnvironment: Map<String, String>,
+        rendererProfile: com.lumocraft.app.domain.native.RendererProfile,
+        resolvedConfig: com.lumocraft.app.domain.runtime.JvmConfiguration,
+    ): String = listOf(
+        context.versionId,
+        context.account.username,
+        context.runtime.id,
+        context.runtime.path,
+        context.gameDirectory.absolutePath,
+        resolvedConfig.maxMemoryMB,
+        resolvedConfig.minMemoryMB,
+        resolvedConfig.gcMode.name,
+        resolvedConfig.extraArguments.joinToString(","),
+        classpath,
+        jniEnvironment.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" },
+        rendererProfile.renderer.name,
+        rendererProfile.resolutionScale.percent,
+        rendererProfile.fpsLimit ?: "unlimited",
+        rendererProfile.vsync,
+        rendererProfile.mipmaps
+    ).joinToString("|")
+
+    private fun encodeArguments(args: LaunchArguments): String =
+        JSONObject()
+            .put("jvm", JSONArray(args.jvmArguments))
+            .put("game", JSONArray(args.gameArguments))
+            .put("mainClass", args.mainClass)
+            .toString()
+
+    private fun decodeArguments(json: String): LaunchArguments? = runCatching {
+        val obj = JSONObject(json)
+        val jvm = obj.optJSONArray("jvm")?.toStringList() ?: emptyList()
+        val game = obj.optJSONArray("game")?.toStringList() ?: emptyList()
+        val mainClass = obj.optString("mainClass")
+        if (jvm.isEmpty() && game.isEmpty() && mainClass.isEmpty()) return null
+        LaunchArguments(jvmArguments = jvm, gameArguments = game, mainClass = mainClass)
+    }.getOrNull()
+
+    private fun org.json.JSONArray.toStringList(): List<String> = buildList {
+        for (i in 0 until length()) add(optString(i))
+    }
+
+    /** Marks the cached runtime validation for this version. */
+    private suspend fun markRuntimeValidated(versionId: String) {
+        val cache = performance.cache()
+        val base = cache.getEntry(versionId) ?: LaunchCacheEntry(versionId)
+        cache.putEntry(
+            base.copy(
+                runtimeValidated = true,
+                lastVerifiedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun builtFromCache(built: BuiltClasspath): Boolean =
+        built.fromCache
 
     /**
      * Safety gate: natives must be extracted, verified and match the
@@ -223,6 +393,9 @@ class DefaultLaunchPipeline(
             }
             if (report.missingAssets > 0) append(" ${report.missingAssets} assets missing;")
         }.trimEnd(';')
+
+    private fun elapsedMs(startNanos: Long): Long =
+        (System.nanoTime() - startNanos) / 1_000_000
 
     private companion object {
         const val MAX_REPORTED_LIBS = 10

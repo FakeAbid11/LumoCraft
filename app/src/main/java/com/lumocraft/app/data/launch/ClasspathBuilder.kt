@@ -1,8 +1,11 @@
 package com.lumocraft.app.data.launch
 
+import com.lumocraft.app.data.performance.Fingerprints
 import com.lumocraft.app.data.storage.StorageManager
 import com.lumocraft.app.data.version.VersionJson
 import com.lumocraft.app.domain.launch.LaunchException
+import com.lumocraft.app.domain.performance.CacheManager
+import com.lumocraft.app.domain.performance.LaunchCacheEntry
 import com.lumocraft.app.domain.version.LibraryRef
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +17,9 @@ data class BuiltClasspath(
     val classpath: String,
     val libraryFiles: List<File>,
     val libraryRefs: List<LibraryRef>,
-    val mainClass: String
+    val mainClass: String,
+    /** True when served from the launch cache without a disk scan. */
+    val fromCache: Boolean = false
 )
 
 /**
@@ -22,14 +27,41 @@ data class BuiltClasspath(
  * by inherited parent versions' libraries (when present), then the client
  * jar, in manifest order with duplicates removed. Every file must exist;
  * missing files fail with a detailed message.
+ *
+ * Results are cached in the [CacheManager] keyed by the version JSON
+ * fingerprint: an unchanged version resolves instantly without touching
+ * the disk. Cache rows never rebuild unchanged data.
  */
-class ClasspathBuilder(private val storage: StorageManager) {
+class ClasspathBuilder(
+    private val storage: StorageManager,
+    private val cache: CacheManager? = null,
+) {
 
     suspend fun build(versionId: String): Result<BuiltClasspath> = withContext(Dispatchers.IO) {
         val chain = loadChain(versionId)
             ?: return@withContext Result.failure(
                 LaunchException("Version JSON for '$versionId' is missing or unreadable")
             )
+
+        val fingerprint = Fingerprints.of(chain.map { storage.versionJsonFile(it) })
+        cache?.let { c ->
+            val entry = c.getEntry(versionId)
+            if (entry?.classpath != null &&
+                entry.versionJsonFingerprint == fingerprint &&
+                entry.mainClass != null
+            ) {
+                c.recordHit()
+                return@withContext Result.success(
+                    BuiltClasspath(
+                        classpath = entry.classpath,
+                        libraryFiles = entry.libraryFiles.map(::File),
+                        libraryRefs = emptyList(),
+                        mainClass = entry.mainClass,
+                        fromCache = true
+                    )
+                )
+            }
+        }
 
         val ordered = linkedMapOf<String, File>()
         val refs = mutableListOf<LibraryRef>()
@@ -61,14 +93,26 @@ class ClasspathBuilder(private val storage: StorageManager) {
         )
 
         val entries = ordered.values.toMutableList().also { it.add(clientJar) }
-        Result.success(
-            BuiltClasspath(
-                classpath = entries.joinToString(File.pathSeparator) { it.absolutePath },
-                libraryFiles = entries,
-                libraryRefs = refs,
-                mainClass = mainClass
-            )
+        val built = BuiltClasspath(
+            classpath = entries.joinToString(File.pathSeparator) { it.absolutePath },
+            libraryFiles = entries,
+            libraryRefs = refs,
+            mainClass = mainClass
         )
+
+        cache?.let { c ->
+            val base = c.getEntry(versionId) ?: LaunchCacheEntry(versionId)
+            c.putEntry(
+                base.copy(
+                    versionJsonFingerprint = fingerprint,
+                    classpath = built.classpath,
+                    libraryFiles = entries.map { it.absolutePath },
+                    mainClass = built.mainClass
+                )
+            )
+            c.recordMiss()
+        }
+        Result.success(built)
     }
 
     /** Leaf-first chain: the version itself, then each inherited parent. */

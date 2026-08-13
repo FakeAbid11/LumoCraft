@@ -4,26 +4,27 @@ LumoCraft is an original Android launcher for Minecraft: Java Edition — a
 lightweight, from-scratch launcher aimed at low-end devices, supporting local
 offline profiles. It is **not** a fork or clone of PojavLauncher.
 
-## Status: Phase 7 — Android Renderer & Native Runtime Compatibility
+## Status: Phase 9 — Performance Engine & Smart Optimization
 
-Phase 7 adds the native compatibility layer: LWJGL native libraries are
-located, extracted per-architecture (cached + incremental), verified and
-injected into the Java process via `java.library.path` and
-`org.lwjgl.librarypath`. A launcher-side renderer profile (Compatibility /
-Performance / Experimental presets, resolution scale 50/75/100%, FPS limit,
-VSync, mipmaps) is persisted and applied at launch, and the foundation for
-touch/virtual-mouse/keyboard/controller input is in place. The renderer glue
-itself (a GLFW stub that turns native rendering into Android surfaces) is a
-later phase.
+Phase 9 turns the launcher into a self-tuning engine: a launch cache and
+selective verification replace the full per-launch scans, JVM settings are
+chosen from a detected device profile (Auto = device-derived, or a manual
+Battery Saver / Balanced / Performance override), every launch is measured
+and kept in history, downloads resume partial files and adapt their
+concurrency to the measured bandwidth, and a byte-buffer pool limits
+allocations on hot paths. A Performance dashboard (Settings → Performance)
+shows the device profile, JVM profile selection, launch history, cache
+stats and cache/performance reset actions.
 
 | Area | Current | Later |
 |---|---|---|
-| UI | Compose Home / Accounts / Versions / Settings screens; full-screen Launch console | Touch controls, renderer overlay |
+| UI | Compose Home / Accounts / Versions / Settings screens; full-screen Launch console; **Performance dashboard** | Touch controls, renderer overlay |
 | Accounts | Offline accounts: create/select/rename/delete, deterministic pixel avatars | Microsoft sign-in |
 | Versions | Manifest browser + filters + search, full vanilla install, install-state tracking, live progress, repair | Fabric/Forge |
-| Runtime | Java runtime manager: install/verify/repair/remove, arch detection, RAM sliders, JVM args | Runtime selection UI |
-| Settings | Theme, Java runtime section, **Renderer section** (profile, resolution, FPS, VSync, native status) | Java args, download options, storage picker |
+| Runtime | Java runtime manager: install/verify/repair/remove, arch detection, RAM sliders, JVM args, cached verification | Runtime selection UI |
+| Settings | Theme, Java runtime section, Renderer section (profile, resolution, FPS, VSync, native status), **Performance dashboard entry** | Java args, download options, storage picker |
 | Native | **NativeRuntimeManager**: per-arch LWJGL extraction (stamps/cache, dedup), verification, JNI env (`java.library.path`, `org.lwjgl.librarypath`), arch-mismatch rejection | Renderer glue (GLFW stub) |
+| Performance | **Launch cache + smart verification** (fingerprint-gated, hash-free repeats), **device profiling** (RAM/cores/tier), **smart JVM profiles** (auto or manual, heap-clamped), **launch profiler** (history on disk), **memory pool**, **adaptive + resumable downloads**, **Performance dashboard** | Sodium, shader-aware settings |
 | Launching | Launch pipeline: validation, client jar fetch, classpath + JVM/game args, native preparation, process spawn, log streaming, crash analysis | Renderer glue, Microsoft auth |
 
 ## Tech stack
@@ -75,16 +76,25 @@ LumoCraft/
 │       │   │   │                         #   LaunchFailure/LaunchErrorType, OfflineUuid
 │       │   │   ├── native/               # NativeRuntimeManager, NativeStatus/NativeReport,
 │       │   │   │                         #   RendererProfile (presets + resolution), InputCompat
+│       │   │   │   ├── performance/          # DeviceProfile/Tier, JvmProfile, CacheManager,
+│       │   │   │   │                         #   SmartVerifier, LaunchProfiler, MemoryOptimizer,
+│       │   │   │   │                         #   PerformanceManager
 │       │   │   └── model/                # ThemeMode
 │       │   ├── data/
 │       │   │   ├── account/              # SharedPreferences account repository
-│       │   │   ├── network/              # HttpClient, Downloader (retry + progress), HashUtils
+│       │   │   ├── network/              # HttpClient, Downloader (retry + progress + resume),
+│       │   │   │                         #   HashUtils, ThroughputTracker, DownloadScheduler
 │       │   │   ├── storage/              # StorageManager: .minecraft layout + metadata
 │       │   │   ├── preferences/          # theme, version + renderer profile stores
 │       │   │   ├── runtime/              # RuntimeInstaller, ArchiveExtractor, RuntimeVerifier,
 │       │   │   │                         #   DefaultRuntimeRepository
 │       │   │   ├── version/              # ManifestService, VersionInstaller, LibraryInstaller,
 │       │   │   │                         #   AssetInstaller, VerificationService, DownloadTracker
+│       │   │   ├── performance/          # AndroidDeviceProfiler, JsonCacheManager,
+│       │   │   │                         #   ChecksumCache, SmartVerifierImpl, RuntimeCache,
+│       │   │   │                         #   LaunchProfilerImpl, MemoryOptimizerImpl,
+│       │   │   │                         #   PerformancePreference, Fingerprints,
+│       │   │   │                         #   DefaultPerformanceManager
 │       │   │   ├── launch/               # ClasspathBuilder, LaunchArgumentBuilder,
 │       │   │   │                         #   ClientJarManager, LaunchValidator, JavaLauncher,
 │       │   │   │                         #   CrashAnalyzer, LauncherLogRepository,
@@ -95,7 +105,7 @@ LumoCraft/
 │       │   ├── navigation/               # LumoDestination enum + AppNavHost (+ launch route)
 │       │   └── ui/
 │       │       ├── components/           # Navigation bar, small shared widgets
-│       │       └── home|accounts|settings|versions|launch/   # feature screens
+│       │       └── home|accounts|settings|versions|launch|performance/   # feature screens
 │       └── res/                          # strings, platform theme, adaptive icon
 ├── gradle/
 │   ├── libs.versions.toml               # version catalog
@@ -121,11 +131,12 @@ LumoCraft/
 - **Install pipeline.** `VersionInstaller` orchestrates an 8-stage pipeline
   (Preparing → Version JSON → Libraries → Asset Index → Assets → Logging
   Config → Verification → Complete).
-- **Parallel downloads.** `LibraryInstaller` and `AssetInstaller` download in
-  parallel with a fixed concurrency limit, verify SHA-1 + size before
-  renaming into place.
-- **Memory-efficient hashing.** `HashUtils.sha1` streams files in 16 KB
-  buffers.
+- **Parallel downloads.** `LibraryInstaller` and `AssetInstaller` download
+  in parallel with adaptive concurrency (device tier + measured
+  bandwidth), resume partial files via Range requests, and verify SHA-1 +
+  size before renaming into place.
+- **Memory-efficient hashing.** `HashUtils.sha1` streams files in small
+  buffers, optionally reusing a pooled buffer from `MemoryOptimizer`.
 - **Runtime manager.** `RuntimeRepository` exposes runtime detection,
   installation, verification, selection, removal, metadata, RAM config and
   JVM argument generation. Phase 6 will call `getDefaultRuntime()` to obtain
@@ -192,6 +203,40 @@ LumoCraft/
   `VirtualMouseController`, `KeyboardHandler` and `ControllerHandler`
   plus an `InputEngine` registry; everything stays null until the
   touch-controls phase fills it in.
+- **Performance manager.** `PerformanceManager` is the single entry point
+  for launcher-side optimization: device profiling (RAM, cores, Android
+  version, low-RAM flag → LOW/MEDIUM/HIGH tier), JVM profile selection
+  (Auto = device-derived, or a manual Battery Saver / Balanced /
+  Performance override, heap-clamped to the device ceiling), the launch
+  cache, smart verification, launch history and the memory optimizer.
+  Later phases (Fabric, Forge, Sodium, shaders) read the device profile
+  without probing hardware again.
+- **Launch cache.** `JsonCacheManager` persists one row per version
+  (`cache/launch_cache.json`): resolved classpath, launch arguments,
+  verified libraries/assets and runtime-validation markers. Rows are keyed
+  by a `size:lastModified` fingerprint of the version JSON chain, so
+  unchanged versions never rebuild anything; the classpath builder, the
+  pipeline and the verifier each merge their own data into the same row.
+- **Smart verification.** `SmartVerifier` trusts a fingerprint-matching
+  cache row outright for Home-screen readiness checks (no disk scan);
+  launch-time checks stat every library/asset by size only, and hashing
+  happens solely for files whose size changed or that lack a cached
+  checksum (`cache/checksums.json`, keyed by path+size+mtime). The
+  installer invalidates rows exactly when a version's files change.
+- **Resumable, adaptive downloads.** `HttpClient.downloadResumable`
+  resumes partial files via HTTP Range requests (HTTP 200 or 416 restarts
+  cleanly); `ThroughputTracker` measures bandwidth over a sliding window
+  and `DownloadScheduler` sheds concurrency when per-connection
+  throughput falls below 128 KB/s.
+- **Launch profiler.** Every launch records validation/classpath/JVM
+  start/total timings, cache hits/misses and success into
+  `cache/launch_history.json` (capped at 10) for the dashboard.
+- **Memory optimizer.** A small pooled byte-buffer store (max 8 buffers,
+  256 KB) serves hot hashing/download I/O and is emptied after each
+  launch so RAM returns to the game process.
+- **Runtime cache.** `RuntimeCache` skips re-verifying an unchanged
+  runtime within a 5-minute window (id + path + release checksum), so
+  repeated readiness checks and launches avoid rescanning.
 
 ## Building locally
 
@@ -269,6 +314,11 @@ Completed:
   rejection, JNI environment injection (`java.library.path`,
   `org.lwjgl.librarypath`), renderer profiles with persisted settings UI,
   resolution scaling, input compatibility foundation
+- **Performance Engine & Smart Optimization** — launch cache + smart
+  verification (fingerprint-gated, hash-free repeats), device profiling
+  with automatic JVM profile selection (manual override supported),
+  launch history dashboard, adaptive + resumable downloads, memory pool,
+  runtime verification cache, structured performance logging
 
 Next phases, in order:
 

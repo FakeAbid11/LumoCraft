@@ -191,6 +191,43 @@
     <string name="native_status_ready">Ready</string>
     <string name="native_status_corrupted">Corrupted</string>
 
+    <!-- Performance -->
+    <string name="settings_section_performance">Performance</string>
+    <string name="performance_open_dashboard">Open performance dashboard</string>
+    <string name="performance_device_profile">Device profile</string>
+    <string name="performance_device_unknown">Not detected yet</string>
+    <string name="performance_tier">Device tier</string>
+    <string name="performance_tier_low">Low</string>
+    <string name="performance_tier_medium">Medium</string>
+    <string name="performance_tier_high">High</string>
+    <string name="performance_ram">RAM</string>
+    <string name="performance_ram_value">%1$s · Recommended: %2$d MB</string>
+    <string name="performance_cpu_cores">CPU cores</string>
+    <string name="performance_android">Android version</string>
+    <string name="performance_architecture">Architecture</string>
+    <string name="performance_low_ram">Low-RAM device</string>
+    <string name="performance_yes">Yes</string>
+    <string name="performance_no">No</string>
+    <string name="performance_jvm_profile">JVM profile</string>
+    <string name="performance_jvm_auto">Auto</string>
+    <string name="performance_jvm_battery">Battery Saver</string>
+    <string name="performance_jvm_balanced">Balanced</string>
+    <string name="performance_jvm_performance">Performance</string>
+    <string name="performance_jvm_auto_hint">Auto picks the profile from the device tier. Manual selections override it.</string>
+    <string name="performance_launch_performance">Launch performance</string>
+    <string name="performance_last_launch">Last launch</string>
+    <string name="performance_fastest_launch">Fastest launch</string>
+    <string name="performance_launch_count">Launches recorded</string>
+    <string name="performance_never_launched">No launches recorded yet</string>
+    <string name="performance_cache">Cache</string>
+    <string name="performance_cache_items">Cached items</string>
+    <string name="performance_cache_size">Cache size</string>
+    <string name="performance_cache_ratio">Hits / misses</string>
+    <string name="performance_clear_cache">Clear cache</string>
+    <string name="performance_rebuild_cache">Rebuild cache</string>
+    <string name="performance_reset_settings">Reset performance settings</string>
+    <string name="performance_back">Back</string>
+
     <!-- Launch -->
     <string name="launch_title">Launching %1$s</string>
     <string name="launch_title_unknown">Launch session</string>

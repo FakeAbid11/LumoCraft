@@ -11,6 +11,7 @@ import com.lumocraft.app.ui.home.HomeScreen
 import com.lumocraft.app.ui.input.ControlsPreviewScreen
 import com.lumocraft.app.ui.input.LayoutEditorScreen
 import com.lumocraft.app.ui.launch.LaunchScreen
+import com.lumocraft.app.ui.performance.PerformanceDashboardScreen
 import com.lumocraft.app.ui.settings.SettingsScreen
 import com.lumocraft.app.ui.versions.VersionsScreen
 
@@ -47,7 +48,13 @@ fun AppNavHost(
                 themeMode = themeMode,
                 onThemeModeChange = onThemeModeChange,
                 onEditLayout = { navController.navigate(INPUT_LAYOUT_ROUTE) },
-                onPreviewControls = { navController.navigate(INPUT_PREVIEW_ROUTE) }
+                onPreviewControls = { navController.navigate(INPUT_PREVIEW_ROUTE) },
+                onOpenPerformance = { navController.navigate(PERFORMANCE_ROUTE) }
+            )
+        }
+        composable(PERFORMANCE_ROUTE) {
+            PerformanceDashboardScreen(
+                onBack = { navController.popBackStack() }
             )
         }
         composable(LAUNCH_ROUTE) {
@@ -70,3 +77,4 @@ fun AppNavHost(
 private const val LAUNCH_ROUTE = "launch"
 private const val INPUT_PREVIEW_ROUTE = "input/preview"
 private const val INPUT_LAYOUT_ROUTE = "input/layout"
+private const val PERFORMANCE_ROUTE = "performance"

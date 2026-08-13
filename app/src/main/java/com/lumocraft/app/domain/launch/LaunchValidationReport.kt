@@ -17,7 +17,9 @@ data class LaunchValidationReport(
     val nativeDetail: String? = null,
     val missingLibraries: List<String> = emptyList(),
     val missingAssets: Int = 0,
-    val runtimeDetail: String? = null
+    val runtimeDetail: String? = null,
+    /** True when file verification was served from the launch cache. */
+    val fromCache: Boolean = false
 ) {
     val ok: Boolean get() =
         accountOk && runtimeOk && versionOk && mainClassOk &&

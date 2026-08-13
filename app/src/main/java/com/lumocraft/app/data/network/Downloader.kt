@@ -14,12 +14,16 @@ import kotlin.coroutines.coroutineContext
  * exponential backoff; permanent errors (4xx, malformed URL) fail fast.
  * Cancellation propagates immediately between attempts and chunk reads.
  *
- * Later phases reuse this for assets, libraries and the Java runtime.
+ * [downloadResumable] resumes partial files (Range requests) so
+ * interrupted downloads continue instead of restarting, and every
+ * successful download feeds the shared [ThroughputTracker] so the
+ * [DownloadScheduler] can adapt concurrency.
  */
 class Downloader(
     private val client: HttpClient,
     private val maxAttempts: Int = AppConfig.DOWNLOAD_MAX_ATTEMPTS,
     private val retryBackoffMs: Long = AppConfig.DOWNLOAD_RETRY_BACKOFF_MS,
+    private val throughput: ThroughputTracker? = null,
 ) {
 
     suspend fun download(
@@ -30,7 +34,36 @@ class Downloader(
         var lastFailure: Throwable? = null
         repeat(maxAttempts) { attempt ->
             coroutineContext.ensureActive()
+            val startedAt = System.nanoTime()
             val result = client.download(url, destination, onProgress)
+            result.onSuccess { file -> reportThroughput(file.length(), startedAt) }
+            if (result.isSuccess) return result
+
+            lastFailure = result.exceptionOrNull()
+            if (!isRetryable(lastFailure) || attempt == maxAttempts - 1) {
+                return result
+            }
+            delay(retryBackoffMs * (1L shl attempt))
+        }
+        return Result.failure(lastFailure ?: IOException("Download failed"))
+    }
+
+    /**
+     * Downloads to [destination] resuming from the existing partial file.
+     * The partial file survives failed attempts and is only deleted when
+     * the server cannot resume or the final content fails verification.
+     */
+    suspend fun downloadResumable(
+        url: String,
+        destination: File,
+        onProgress: suspend (Float?) -> Unit = {},
+    ): Result<File> {
+        var lastFailure: Throwable? = null
+        repeat(maxAttempts) { attempt ->
+            coroutineContext.ensureActive()
+            val startedAt = System.nanoTime()
+            val result = client.downloadResumable(url, destination, onProgress)
+            result.onSuccess { file -> reportThroughput(file.length(), startedAt) }
             if (result.isSuccess) return result
 
             lastFailure = result.exceptionOrNull()
@@ -49,6 +82,8 @@ class Downloader(
      * @param force redownloads even when the existing file verifies.
      * @param rehashExisting when false, an existing file that matches the
      * expected size is trusted without hashing (used for large asset files).
+     * @param resume when true, the temp file is reused across attempts via
+     * Range requests instead of being discarded on failure.
      */
     suspend fun downloadVerified(
         url: String,
@@ -57,6 +92,7 @@ class Downloader(
         expectedSize: Long? = null,
         force: Boolean = false,
         rehashExisting: Boolean = true,
+        resume: Boolean = false,
         onProgress: suspend (Float?) -> Unit = {},
     ): Result<File> {
         if (!force && destination.isFile && sizeMatches(destination, expectedSize)) {
@@ -65,7 +101,11 @@ class Downloader(
             }
         }
         val temp = File(destination.parentFile, ".${destination.name}.part")
-        val result = download(url, temp, onProgress)
+        val result = if (resume) {
+            downloadResumable(url, temp, onProgress)
+        } else {
+            download(url, temp, onProgress)
+        }
         if (result.isFailure) return result
 
         val file = result.getOrThrow()
@@ -79,6 +119,12 @@ class Downloader(
         }
         file.renameTo(destination)
         return Result.success(destination)
+    }
+
+    private fun reportThroughput(bytes: Long, startedAtNanos: Long) {
+        if (bytes <= 0) return
+        val elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000
+        throughput?.record(bytes, elapsedMs)
     }
 
     private fun sizeMatches(file: File, expectedSize: Long?): Boolean =

@@ -23,8 +23,19 @@ import com.lumocraft.app.data.native.NativeArchitecture
 import com.lumocraft.app.data.native.NativeExtractionService
 import com.lumocraft.app.data.native.NativeLibraryManager
 import com.lumocraft.app.data.native.NativeVerificationService
+import com.lumocraft.app.data.network.DownloadScheduler
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.network.HttpClient
+import com.lumocraft.app.data.network.ThroughputTracker
+import com.lumocraft.app.data.performance.AndroidDeviceProfiler
+import com.lumocraft.app.data.performance.ChecksumCache
+import com.lumocraft.app.data.performance.DefaultPerformanceManager
+import com.lumocraft.app.data.performance.JsonCacheManager
+import com.lumocraft.app.data.performance.LaunchProfilerImpl
+import com.lumocraft.app.data.performance.MemoryOptimizerImpl
+import com.lumocraft.app.data.performance.PerformancePreference
+import com.lumocraft.app.data.performance.RuntimeCache
+import com.lumocraft.app.data.performance.SmartVerifierImpl
 import com.lumocraft.app.data.preferences.RendererPreference
 import com.lumocraft.app.data.runtime.ArchiveExtractor
 import com.lumocraft.app.data.runtime.DefaultRuntimeRepository
@@ -43,6 +54,8 @@ import com.lumocraft.app.domain.input.InputRepository
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.native.NativeRuntimeManager
+import com.lumocraft.app.domain.performance.MemoryOptimizer
+import com.lumocraft.app.domain.performance.PerformanceManager
 import com.lumocraft.app.domain.runtime.RuntimeRepository
 import com.lumocraft.app.domain.version.VersionRepository
 import kotlinx.coroutines.CoroutineScope
@@ -65,18 +78,68 @@ class LumoCraftApplication : Application() {
         StorageManager(this)
     }
 
+    /** Shared bandwidth estimator for adaptive download concurrency. */
+    private val throughputTracker: ThroughputTracker by lazy {
+        ThroughputTracker()
+    }
+
+    /** Shared adaptive concurrency scheduler (device tier + bandwidth). */
+    private val downloadScheduler: DownloadScheduler by lazy {
+        DownloadScheduler(deviceProfiler::detect, throughputTracker)
+    }
+
+    /** Cached runtime validation (skips repeated scans). */
+    private val runtimeCache: RuntimeCache by lazy {
+        RuntimeCache(storageManager)
+    }
+
+    /** Pooled byte buffers released after each launch. */
+    val memoryOptimizer: MemoryOptimizer by lazy {
+        MemoryOptimizerImpl()
+    }
+
+    val deviceProfiler: AndroidDeviceProfiler by lazy {
+        AndroidDeviceProfiler(this)
+    }
+
+    /** Phase 9 entry point for all launcher-side optimization. */
+    val performanceManager: PerformanceManager by lazy {
+        val storage = storageManager
+        val cache = JsonCacheManager(storage)
+        DefaultPerformanceManager(
+            profiler = deviceProfiler,
+            preference = PerformancePreference(this),
+            cache = cache,
+            verifier = SmartVerifierImpl(
+                storage = storage,
+                cache = cache,
+                checksums = ChecksumCache(storage),
+                buffers = memoryOptimizer
+            ),
+            launchProfiler = LaunchProfilerImpl(storage),
+            memory = memoryOptimizer,
+            runtimeRepository = runtimeRepository,
+            storage = storage,
+            scheduler = downloadScheduler
+        )
+    }
+
     val versionRepository: VersionRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
-        val downloader = Downloader(client)
+        val downloader = Downloader(client, throughput = throughputTracker)
         DefaultVersionRepository(
             manifestService = ManifestService(client),
             installer = VersionInstaller(
                 storage = storage,
                 downloader = downloader,
-                libraryInstaller = LibraryInstaller(storage, downloader),
-                assetInstaller = AssetInstaller(storage, downloader),
-                verificationService = VerificationService(storage)
+                libraryInstaller = LibraryInstaller(storage, downloader, downloadScheduler),
+                assetInstaller = AssetInstaller(storage, downloader, downloadScheduler),
+                verificationService = VerificationService(storage),
+                onFilesChanged = { versionId ->
+                    performanceManager.cache().removeEntry(versionId)
+                    performanceManager.verifier().invalidate(versionId)
+                }
             ),
             storage = storage
         )
@@ -85,12 +148,13 @@ class LumoCraftApplication : Application() {
     val runtimeRepository: RuntimeRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
-        val downloader = Downloader(client)
+        val downloader = Downloader(client, throughput = throughputTracker)
         val extractor = ArchiveExtractor()
         DefaultRuntimeRepository(
             storage = storage,
             installer = RuntimeInstaller(storage, downloader, extractor),
-            verifier = RuntimeVerifier()
+            verifier = RuntimeVerifier(),
+            runtimeCache = runtimeCache
         )
     }
 
@@ -111,22 +175,29 @@ class LumoCraftApplication : Application() {
     }
 
     val launchValidator: LaunchValidator by lazy {
-        LaunchValidator(storageManager, RuntimeVerifier(), nativeRuntimeManager)
+        LaunchValidator(
+            storage = storageManager,
+            runtimeVerifier = RuntimeVerifier(),
+            nativeRuntimeManager = nativeRuntimeManager,
+            smartVerifier = performanceManager.verifier(),
+            runtimeCache = runtimeCache
+        )
     }
 
     val launchPipeline: LaunchPipeline by lazy {
         val storage = storageManager
-        val downloader = Downloader(HttpClient())
+        val downloader = Downloader(HttpClient(), throughput = throughputTracker)
         DefaultLaunchPipeline(
             environment = LaunchEnvironment(storage),
             validator = launchValidator,
-            classpathBuilder = ClasspathBuilder(storage),
+            classpathBuilder = ClasspathBuilder(storage, performanceManager.cache()),
             argumentBuilder = LaunchArgumentBuilder(storage),
             clientJarManager = ClientJarManager(storage, downloader),
             nativeRuntimeManager = nativeRuntimeManager,
             launcher = JavaLauncher(),
             crashAnalyzer = CrashAnalyzer(),
             logs = launcherLogRepository,
+            performance = performanceManager,
             inputConfiguration = { inputManager.configuration() }
         )
     }

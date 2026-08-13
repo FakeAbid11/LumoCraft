@@ -30,6 +30,12 @@ class VersionInstaller(
     private val libraryInstaller: LibraryInstaller,
     private val assetInstaller: AssetInstaller,
     private val verificationService: VerificationService,
+    /**
+     * Called whenever a version's files change (install/repair/verification
+     * failure) so the launch cache and smart verification rows can be
+     * invalidated exactly when needed.
+     */
+    private val onFilesChanged: (suspend (versionId: String) -> Unit)? = null,
 ) {
 
     suspend fun install(
@@ -61,6 +67,7 @@ class VersionInstaller(
                 )
             storage.writeMetadata(verified)
             verificationListener(1f, report.totalLibraries + report.totalAssets, 0, 0, 0)
+            onFilesChanged?.invoke(id)
             onProgress(InstallProgress(id, InstallStage.COMPLETE, 1f, 0, 0, 0, 0))
             return@withContext Result.success(verified)
         }
@@ -149,12 +156,14 @@ class VersionInstaller(
         val report = verificationService.scan(id)
         if (!report.ok) {
             storage.writeMetadata(pending.copy(state = InstallState.CORRUPTED))
+            onFilesChanged?.invoke(id)
             onProgress(InstallProgress(id, InstallStage.VERIFICATION, error = "Verification failed"))
             return@withContext Result.failure(IllegalStateException("Verification failed"))
         }
         val installed = pending.copy(state = InstallState.INSTALLED)
         storage.writeMetadata(installed)
         verificationListener(1f, report.totalLibraries + report.totalAssets, 0, 0, 0)
+        onFilesChanged?.invoke(id)
         onProgress(InstallProgress(id, InstallStage.COMPLETE, 1f, 0, 0, 0, 0))
         Result.success(installed)
     }
