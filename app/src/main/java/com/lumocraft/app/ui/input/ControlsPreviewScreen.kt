@@ -1,33 +1,28 @@
 package com.lumocraft.app.ui.input
 
+import android.content.Context
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.nativeKeyCode
-import androidx.compose.ui.input.key.nativeKeyEvent
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.pointerInteropFilter
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -52,7 +47,6 @@ fun ControlsPreviewScreen(
 ) {
     val manager = viewModel.manager
     val overlayVisible by manager.overlayVisible.collectAsState()
-    val focusRequester = remember { FocusRequester() }
 
     DisposableEffect(Unit) {
         manager.controller.register()
@@ -63,38 +57,19 @@ fun ControlsPreviewScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF14161A))
-            .focusRequester(focusRequester)
-            .focusable()
-            .onKeyEvent { event ->
-                val native = event.nativeKeyEvent
-                val handled = native != null && manager.controller.handleKeyEvent(native)
-                if (!handled) {
-                    manager.keyboard.setConnected(true)
-                    manager.keyboard.onKeyEvent(
-                        keyCode = event.nativeKeyCode,
-                        scanCode = native?.scanCode ?: 0,
-                        down = event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyRepeat,
-                        repeat = event.type == KeyEventType.KeyRepeat
-                    )
-                }
-                true
-            }
-            .pointerInteropFilter { event ->
-                manager.controller.handleMotionEvent(event)
-            }
     ) {
         GameSurfaceBackdrop(modifier = Modifier.fillMaxSize())
         InputOverlay(
             manager = manager,
             modifier = Modifier.fillMaxSize()
+        )
+        AndroidView(
+            factory = { context -> GamepadInputView(context, manager) },
+            modifier = Modifier.matchParentSize()
         )
         Row(
             modifier = Modifier
@@ -117,6 +92,45 @@ fun ControlsPreviewScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Transparent interop view that captures what the Compose pointer
+ * pipeline cannot: gamepad keys (focused view receives key events)
+ * and generic motion events (joystick axes). Touches return false and
+ * fall through to the overlay underneath.
+ */
+private class GamepadInputView(
+    context: Context,
+    private val manager: InputManager,
+) : View(context) {
+
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestFocus()
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        manager.controller.handleMotionEvent(event)
+        return true
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
+        if (manager.controller.handleKeyEvent(event)) return true
+        manager.keyboard.onKeyEvent(
+            keyCode = event.keyCode,
+            scanCode = event.scanCode,
+            down = event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_REPEAT,
+            repeat = event.action == KeyEvent.ACTION_REPEAT
+        )
+        return true
     }
 }
 

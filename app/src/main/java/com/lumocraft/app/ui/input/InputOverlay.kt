@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToCancel
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
@@ -72,11 +73,12 @@ fun InputOverlay(
             .then(
                 if (interactive) {
                     Modifier.pointerInput(manager) {
+                        val activePointers = HashSet<Long>()
                         awaitPointerEventScope {
                             while (true) {
-                                val event = awaitPointerEvent()
+                                val event = awaitPointerEvent(PointerEventPass.Final)
                                 lastActivity.longValue = SystemClock.uptimeMillis()
-                                feed(event, manager)
+                                feed(event, manager, activePointers)
                             }
                         }
                     }
@@ -106,9 +108,12 @@ fun InputOverlay(
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.feed(
     event: PointerEvent,
     manager: InputManager,
+    activePointers: MutableSet<Long>,
 ) {
     val now = SystemClock.uptimeMillis()
     for (change in event.changes) {
+        val up = change.changedToUp() || change.changedToCancel()
+        if (change.isConsumed && !(up && change.id.value in activePointers)) continue
         val touch = when {
             change.changedToDown() -> RawTouch(change.position.x, change.position.y, TouchActionKind.DOWN, change.id.value, now)
             change.changedToUp() -> RawTouch(change.position.x, change.position.y, TouchActionKind.UP, change.id.value, now)
@@ -117,6 +122,10 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.feed(
             else -> null
         }
         if (touch != null) {
+            if (touch.action == TouchActionKind.DOWN) activePointers.add(touch.pointerId)
+            if (touch.action == TouchActionKind.UP || touch.action == TouchActionKind.CANCEL) {
+                activePointers.remove(touch.pointerId)
+            }
             for (gesture in manager.touchMapper.feed(touch)) {
                 manager.handleGesture(gesture)
             }
