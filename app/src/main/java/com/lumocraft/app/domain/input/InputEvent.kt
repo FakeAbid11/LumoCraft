@@ -11,7 +11,10 @@ sealed interface InputEvent {
     data class MouseMoved(val dx: Float, val dy: Float) : InputEvent
 
     /** Cursor button state change. */
-    data class MouseButton(val button: MouseButton, val pressed: Boolean) : InputEvent
+    data class MouseButton(
+        val button: com.lumocraft.app.domain.input.MouseButton,
+        val pressed: Boolean
+    ) : InputEvent
 
     /** Scrolled by an accumulated wheel delta. */
     data class MouseScrolled(val delta: Float) : InputEvent

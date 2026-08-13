@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lumocraft.app.LumoCraftApplication
 import com.lumocraft.app.R
+import com.lumocraft.app.data.input.AndroidControllerManager
 import com.lumocraft.app.domain.input.InputManager
 
 /**
@@ -102,8 +103,10 @@ fun ControlsPreviewScreen(
  */
 private class GamepadInputView(
     context: Context,
-    private val manager: InputManager,
+    manager: InputManager,
 ) : View(context) {
+
+    private val controller = manager.controller as? AndroidControllerManager
 
     init {
         isFocusable = true
@@ -116,13 +119,13 @@ private class GamepadInputView(
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        manager.controller.handleMotionEvent(event)
+        controller?.handleMotionEvent(event)
         return true
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
-        if (manager.controller.handleKeyEvent(event)) return true
+        if (controller?.handleKeyEvent(event) == true) return true
         manager.keyboard.onKeyEvent(
             keyCode = event.keyCode,
             scanCode = event.scanCode,

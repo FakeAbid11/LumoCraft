@@ -1,5 +1,7 @@
 package com.lumocraft.app.domain.input
 
+import kotlin.math.roundToInt
+
 /**
  * Pure geometry helpers shared by the overlay, the layout editor and
  * the input manager. Everything stays normalized (0..1) except the
@@ -70,8 +72,6 @@ object LayoutGeometry {
     }
 
     fun grid(value: Float, grid: Float = EDITOR_GRID): Float = (value / grid).roundToInt() * grid
-
-    private fun Float.roundToInt(): Int = kotlin.math.roundToInt(this)
 
     const val EDITOR_GRID = 1f / 24f
     const val EDITOR_SNAP_RADIUS = 1f / 160f

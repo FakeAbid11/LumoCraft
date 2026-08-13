@@ -35,7 +35,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.roundToPx
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -151,17 +150,17 @@ private fun EditorEditLayer(
 
         state.layout.buttons.forEach { button ->
             val selected = button.id == state.selectedId
-            val widthDp = button.width * surfaceWidth
-            val heightDp = button.height * surfaceHeight
-            val centerX = button.x * surfaceWidth
-            val centerY = button.y * surfaceHeight
+            val widthDp = surfaceWidth * button.width
+            val heightDp = surfaceHeight * button.height
+            val centerX = surfaceWidth * button.x
+            val centerY = surfaceHeight * button.y
 
             Box(
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            (centerX - widthDp / 2f).roundToPx(),
-                            (centerY - heightDp / 2f).roundToPx()
+                            roundToPx(centerX - widthDp / 2f),
+                            roundToPx(centerY - heightDp / 2f)
                         )
                     }
                     .size(widthDp, heightDp)

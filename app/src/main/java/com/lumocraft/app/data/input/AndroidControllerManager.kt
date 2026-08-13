@@ -112,8 +112,11 @@ class AndroidControllerManager(context: Context) : ControllerManager {
     private fun refresh() {
         var device: InputDevice? = null
         for (id in androidInputManager.inputDeviceIds) {
-            val candidate = androidInputManager.getInputDevice(id)
-            if (candidate?.isGamepad() == true) {
+            val candidate = androidInputManager.getInputDevice(id) ?: continue
+            val sources = candidate.sources
+            if (sources and InputDevice.SOURCE_GAMEPAD != 0 ||
+                sources and InputDevice.SOURCE_JOYSTICK != 0
+            ) {
                 device = candidate
                 break
             }

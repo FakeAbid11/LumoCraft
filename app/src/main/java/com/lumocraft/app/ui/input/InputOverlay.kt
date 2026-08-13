@@ -2,12 +2,12 @@ package com.lumocraft.app.ui.input
 
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -20,10 +20,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToCancel
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -72,7 +70,7 @@ fun InputOverlay(
             .then(
                 if (interactive) {
                     Modifier.pointerInput(manager) {
-                        val activePointers = HashSet<Long>()
+                        val activePointers = HashSet<Int>()
                         awaitPointerEventScope {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
@@ -104,20 +102,26 @@ fun InputOverlay(
     }
 }
 
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.feed(
+private fun androidx.compose.ui.input.pointer.PointerInputScope.feed(
     event: PointerEvent,
     manager: InputManager,
-    activePointers: MutableSet<Long>,
+    activePointers: MutableSet<Int>,
 ) {
     val now = SystemClock.uptimeMillis()
     for (change in event.changes) {
-        val up = change.changedToUp() || change.changedToCancel()
-        if (change.isConsumed && !(up && change.id.value in activePointers)) continue
+        val pointerId = change.id.value.toInt()
+        val up = change.previousPressed && !change.pressed
+        if (change.isConsumed && !(up && pointerId in activePointers)) continue
         val touch = when {
-            change.changedToDown() -> RawTouch(change.position.x, change.position.y, TouchActionKind.DOWN, change.id.value, now)
-            change.changedToUp() -> RawTouch(change.position.x, change.position.y, TouchActionKind.UP, change.id.value, now)
-            change.changedToCancel() -> RawTouch(change.position.x, change.position.y, TouchActionKind.CANCEL, change.id.value, now)
-            change.pressed -> RawTouch(change.position.x, change.position.y, TouchActionKind.MOVE, change.id.value, now)
+            change.changedToDown() -> RawTouch(change.position.x, change.position.y, TouchActionKind.DOWN, pointerId, now)
+            up -> RawTouch(
+                change.position.x,
+                change.position.y,
+                if (change.isConsumed) TouchActionKind.CANCEL else TouchActionKind.UP,
+                pointerId,
+                now
+            )
+            change.pressed -> RawTouch(change.position.x, change.position.y, TouchActionKind.MOVE, pointerId, now)
             else -> null
         }
         if (touch != null) {
@@ -143,7 +147,7 @@ private fun rememberControlFade(
     settings: InputSettings,
     interactive: Boolean,
     lastActivity: () -> Long,
-): State<Float> {
+): Animatable<Float, AnimationVector1D> {
     val alpha = remember { Animatable(1f) }
     LaunchedEffect(settings.fadeIdleControls, interactive) {
         while (true) {
