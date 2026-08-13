@@ -83,6 +83,8 @@
     <string name="versions_repair">Repair</string>
     <string name="versions_install_failed">Install failed. Check your connection and try again.</string>
     <string name="versions_repair_failed">Repair failed. Check your connection and try again.</string>
+    <string name="versions_remove_confirm_title">Remove version?</string>
+    <string name="versions_remove_confirm_message">Remove the installation of %1$s? Loader instances stay installed but will need this version to launch.</string>
     <string name="versions_released_on">Released %1$s</string>
     <string name="versions_percent">%d%%</string>
     <string name="versions_bytes_progress">%1$s of %2$s</string>
@@ -109,6 +111,45 @@
         <item quantity="one">%d file left</item>
         <item quantity="other">%d files left</item>
     </plurals>
+
+    <!-- Loaders -->
+    <string name="loader_badge_vanilla">Vanilla</string>
+    <string name="loader_badge_fabric">Fabric</string>
+    <string name="loader_install_fabric">Install Fabric</string>
+    <string name="loader_selector">Loader</string>
+    <string name="loader_selector_hint">Pick a Fabric Loader version</string>
+    <string name="loader_versions_loading">Checking available loaders…</string>
+    <string name="loader_versions_error">Couldn\'t load Fabric versions.</string>
+    <string name="loader_versions_none">No Fabric Loader available for this Minecraft version.</string>
+    <string name="loader_version_label">Loader %1$s</string>
+    <string name="loader_for_minecraft">for Minecraft %1$s</string>
+    <string name="loader_installed">Loader installed</string>
+    <string name="loader_missing">Missing</string>
+    <string name="loader_corrupted">Corrupted</string>
+    <string name="loader_pending">Installing…</string>
+    <string name="loader_failed">Failed</string>
+    <string name="loader_remove">Remove</string>
+    <string name="loader_remove_confirm_title">Remove loader?</string>
+    <string name="loader_remove_confirm_message">Remove the Fabric installation for Minecraft %1$s? The Minecraft version itself stays installed.</string>
+    <string name="loader_install_failed">Fabric install failed. Check your connection and try again.</string>
+    <string name="loader_need_vanilla">Install Minecraft %1$s first, then add Fabric.</string>
+    <string name="loader_stage_preparing">Preparing</string>
+    <string name="loader_stage_metadata">Loader metadata</string>
+    <string name="loader_stage_libraries">Libraries</string>
+    <string name="loader_stage_verification">Verification</string>
+    <string name="loader_stage_complete">Complete</string>
+    <string name="loader_manager_title">Loader Manager</string>
+    <string name="loader_manager_back">Back</string>
+    <string name="loader_manager_active">Active loader</string>
+    <string name="loader_manager_no_active">No loader selected — the launcher uses Vanilla.</string>
+    <string name="loader_manager_installed">Installed loaders</string>
+    <string name="loader_manager_no_loaders">No loaders installed yet. Open a version in the Versions tab and press “Install Fabric”.</string>
+    <string name="loader_manager_compatibility">Compatibility</string>
+    <string name="loader_manager_compat_none">No loader metadata available for the installed versions.</string>
+    <string name="loader_manager_compat_count">%1$d loader versions</string>
+    <string name="loader_manager_repair_status">Repair status: %1$s</string>
+    <string name="loader_manager_open">Manage loaders</string>
+    <string name="loader_launch_active">Launch target: %1$s</string>
 
     <!-- Settings -->
     <string name="settings_screen_title">Settings</string>

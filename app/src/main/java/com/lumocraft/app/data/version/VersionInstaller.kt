@@ -32,10 +32,10 @@ class VersionInstaller(
     private val verificationService: VerificationService,
     /**
      * Called whenever a version's files change (install/repair/verification
-     * failure) so the launch cache and smart verification rows can be
-     * invalidated exactly when needed.
+     * failure/removal) so the launch cache and smart verification rows can
+     * be invalidated exactly when needed.
      */
-    private val onFilesChanged: (suspend (versionId: String) -> Unit)? = null,
+    val onFilesChanged: (suspend (versionId: String) -> Unit)? = null,
 ) {
 
     suspend fun install(

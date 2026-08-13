@@ -10,6 +10,7 @@ import com.lumocraft.app.domain.launch.LaunchValidationReport
 import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.native.NativeStatus
 import com.lumocraft.app.domain.performance.SmartVerifier
+import com.lumocraft.app.domain.loader.LoaderLaunchConfigurator
 import com.lumocraft.app.domain.runtime.RuntimeVerificationReport
 import com.lumocraft.app.domain.version.InstallState
 import java.io.File
@@ -33,6 +34,12 @@ class LaunchValidator(
     private val nativeRuntimeManager: NativeRuntimeManager,
     private val smartVerifier: SmartVerifier,
     private val runtimeCache: RuntimeCache? = null,
+    /**
+     * Resolves loader instances (Fabric) so their patched client jar and
+     * loader libraries are validated instead of the vanilla layout.
+     * Null keeps the validator vanilla-only.
+     */
+    private val loaderConfigurator: LoaderLaunchConfigurator? = null,
 ) {
 
     /** Full validation including the client jar; used by the pipeline. */
@@ -79,8 +86,9 @@ class LaunchValidator(
             ?.optString("id")
             ?.let { id -> storage.loggingConfigFile(context.versionId, id).isFile }
             ?: true
-        val clientJarOk = !requireClientJar ||
-            File(storage.versionDirectory(context.versionId), "${context.versionId}.jar").isFile
+        val clientJar = loaderConfigurator?.clientJarFor(context.versionId)
+            ?: File(storage.versionDirectory(context.versionId), "${context.versionId}.jar")
+        val clientJarOk = !requireClientJar || clientJar.isFile
         val nativeStatus = nativeRuntimeManager.statusOf(context.versionId)
         val nativeOk = nativeStatus == NativeStatus.READY
         val nativeDetail = if (nativeOk) {

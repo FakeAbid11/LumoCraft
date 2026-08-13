@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -278,7 +279,7 @@ private fun StatusRow(
         StatusCard(
             title = stringResource(R.string.home_stat_versions),
             value = if (installedVersionsCount > 0) {
-                stringResource(R.plurals.versions_count, installedVersionsCount)
+                pluralStringResource(R.plurals.versions_count, installedVersionsCount)
             } else {
                 stringResource(R.string.home_stat_no_versions)
             },

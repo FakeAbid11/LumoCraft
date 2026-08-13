@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lumocraft.app.R
+import com.lumocraft.app.domain.loader.LoaderInstance
 import com.lumocraft.app.domain.version.InstallProgress
 import com.lumocraft.app.domain.version.InstallState
 import com.lumocraft.app.domain.version.MinecraftVersion
@@ -33,6 +34,7 @@ import com.lumocraft.app.domain.version.VersionType
 fun VersionListItem(
     version: MinecraftVersion,
     state: InstallState?,
+    loaderInstances: List<LoaderInstance>,
     isInstalling: Boolean,
     progress: InstallProgress?,
     onClick: () -> Unit,
@@ -89,16 +91,31 @@ fun VersionListItem(
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = buildString {
-                            append(typeLabel(version.type))
-                            formatReleaseDate(version.releaseTime)?.let { date ->
-                                append("  ·  ").append(date)
-                            }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = buildString {
+                                append(typeLabel(version.type))
+                                formatReleaseDate(version.releaseTime)?.let { date ->
+                                    append("  ·  ").append(date)
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Badge(
+                            text = stringResource(R.string.loader_badge_vanilla),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (loaderInstances.isNotEmpty()) {
+                            Badge(
+                                text = stringResource(R.string.loader_badge_fabric),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
                 when (state) {
                     InstallState.PENDING -> StatusLabel(
@@ -141,6 +158,16 @@ private fun StatusLabel(text: String, color: Color) {
         text = text,
         style = MaterialTheme.typography.labelSmall,
         color = color
+    )
+}
+
+@Composable
+private fun Badge(text: String, color: Color) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        maxLines = 1
     )
 }
 

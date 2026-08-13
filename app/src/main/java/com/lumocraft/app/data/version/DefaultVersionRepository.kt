@@ -39,6 +39,17 @@ class DefaultVersionRepository(
     override fun repair(version: MinecraftVersion): Flow<InstallProgress> =
         pipeline(version) { onProgress -> installer.repair(version, onProgress) }
 
+    override suspend fun remove(versionId: String): Result<Unit> {
+        val removed = storage.removeVersionDirectory(versionId)
+        installer.onFilesChanged?.invoke(versionId)
+        _installedStates.value = storage.readInstallStates()
+        return if (removed) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Version '$versionId' not found"))
+        }
+    }
+
     private fun pipeline(
         version: MinecraftVersion,
         run: suspend (suspend (InstallProgress) -> Unit) -> Result<InstalledVersionMetadata>,

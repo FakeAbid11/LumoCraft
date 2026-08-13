@@ -2,6 +2,8 @@ package com.lumocraft.app.data.storage
 
 import android.content.Context
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.domain.loader.LoaderMetadata
+import com.lumocraft.app.domain.loader.LoaderType
 import com.lumocraft.app.domain.version.InstallState
 import com.lumocraft.app.domain.version.InstalledVersionMetadata
 import java.io.File
@@ -22,8 +24,12 @@ import org.json.JSONObject
  * ├── assets/
  * │   ├── indexes/<indexId>.json
  * │   └── objects/<hash[0..2]>/<hash>
- * ├── logs/                             (future: launcher/game logs)
- * └── runtime/                          (Java runtimes)
+ * ├── loader/                          (mod loader registry)
+ * │   └── <loaderType>/
+ * │       ├── instances/<instanceId>/metadata.json
+ * │       └── cache/                   (fetched metadata service responses)
+ * ├── logs/                            (future: launcher/game logs)
+ * └── runtime/                         (Java runtimes)
  *     ├── java17/
  *     ├── java21/
  *     └── metadata.json
@@ -54,6 +60,24 @@ class StorageManager(context: Context) {
     fun librariesDirectory(): File = File(launcherRoot, "libraries")
 
     fun logsDirectory(): File = File(launcherRoot, "logs")
+
+    fun loaderDirectory(type: LoaderType): File =
+        File(launcherRoot, "loader").let { root ->
+            File(root, sanitize(type.id))
+        }
+
+    fun loaderInstancesDirectory(type: LoaderType): File =
+        File(loaderDirectory(type), "instances")
+
+    fun loaderInstanceDirectory(type: LoaderType, instanceId: String): File =
+        File(loaderInstancesDirectory(type), sanitize(instanceId))
+
+    fun loaderInstanceMetadataFile(type: LoaderType, instanceId: String): File =
+        File(loaderInstanceDirectory(type, instanceId), METADATA_FILE_NAME)
+
+    /** Cache of metadata service responses, shared per loader type. */
+    fun loaderCacheDirectory(type: LoaderType): File =
+        File(loaderDirectory(type), "cache")
 
     fun inputDirectory(): File = File(launcherRoot, "input")
 
@@ -99,6 +123,10 @@ class StorageManager(context: Context) {
             runtimeDirectory(),
             inputProfilesDirectory()
         ).forEach { it.mkdirs() }
+        LoaderType.entries.forEach { type ->
+            loaderInstancesDirectory(type).mkdirs()
+            loaderCacheDirectory(type).mkdirs()
+        }
     }
 
     fun readMetadata(versionId: String): InstalledVersionMetadata? {
@@ -139,6 +167,61 @@ class StorageManager(context: Context) {
             ?: emptyMap()
     }
 
+    /** Removes a version directory (version JSON, jar, metadata, logging). */
+    fun removeVersionDirectory(versionId: String): Boolean {
+        val dir = versionDirectory(versionId)
+        return dir.deleteRecursively()
+    }
+
+    fun readLoaderMetadata(type: LoaderType, instanceId: String): LoaderMetadata? {
+        val file = loaderInstanceMetadataFile(type, instanceId)
+        if (!file.isFile) return null
+        return runCatching {
+            val obj = JSONObject(file.readText())
+            LoaderMetadata(
+                instanceId = obj.getString(KEY_LOADER_INSTANCE_ID),
+                type = LoaderType.fromId(obj.getString(KEY_LOADER_TYPE)) ?: return null,
+                minecraftVersion = obj.getString(KEY_LOADER_MINECRAFT_VERSION),
+                loaderVersion = obj.getString(KEY_LOADER_VERSION),
+                installerVersion = obj.getString(KEY_LOADER_INSTALLER_VERSION),
+                installedAt = obj.getLong(KEY_LOADER_INSTALLED_AT),
+                state = InstallState.valueOf(obj.getString(KEY_STATE))
+            )
+        }.getOrNull()
+    }
+
+    fun writeLoaderMetadata(metadata: LoaderMetadata) {
+        val dir = loaderInstanceDirectory(metadata.type, metadata.instanceId)
+        dir.mkdirs()
+        val json = JSONObject()
+            .put(KEY_LOADER_INSTANCE_ID, metadata.instanceId)
+            .put(KEY_LOADER_TYPE, metadata.type.id)
+            .put(KEY_LOADER_MINECRAFT_VERSION, metadata.minecraftVersion)
+            .put(KEY_LOADER_VERSION, metadata.loaderVersion)
+            .put(KEY_LOADER_INSTALLER_VERSION, metadata.installerVersion)
+            .put(KEY_LOADER_INSTALLED_AT, metadata.installedAt)
+            .put(KEY_STATE, metadata.state.name)
+        loaderInstanceMetadataFile(metadata.type, metadata.instanceId).writeText(json.toString())
+    }
+
+    fun removeLoaderMetadata(type: LoaderType, instanceId: String): Boolean {
+        val dir = loaderInstanceDirectory(type, instanceId)
+        return dir.deleteRecursively()
+    }
+
+    /** All loader metadata files of one type, keyed by instance id. */
+    fun readAllLoaderMetadata(type: LoaderType): Map<String, LoaderMetadata> {
+        val dir = loaderInstancesDirectory(type)
+        if (!dir.isDirectory) return emptyMap()
+        return dir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { entry ->
+                readLoaderMetadata(type, entry.name)?.let { it.instanceId to it }
+            }
+            ?.toMap()
+            ?: emptyMap()
+    }
+
     /** Version ids become file/directory names; keep them filesystem-safe. */
     private fun sanitize(versionId: String): String =
         versionId.replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -150,5 +233,11 @@ class StorageManager(context: Context) {
         const val KEY_SOURCE = "source"
         const val KEY_INSTALLER_VERSION = "installerVersion"
         const val KEY_STATE = "state"
+        const val KEY_LOADER_INSTANCE_ID = "instanceId"
+        const val KEY_LOADER_TYPE = "type"
+        const val KEY_LOADER_MINECRAFT_VERSION = "minecraftVersion"
+        const val KEY_LOADER_VERSION = "loaderVersion"
+        const val KEY_LOADER_INSTALLER_VERSION = "installerVersion"
+        const val KEY_LOADER_INSTALLED_AT = "installedAt"
     }
 }

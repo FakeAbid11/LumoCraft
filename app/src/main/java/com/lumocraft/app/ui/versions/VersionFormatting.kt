@@ -3,6 +3,7 @@ package com.lumocraft.app.ui.versions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.lumocraft.app.R
+import com.lumocraft.app.domain.loader.LoaderInstallStage
 import com.lumocraft.app.domain.version.InstallStage
 import java.time.Instant
 import java.time.ZoneId
@@ -44,5 +45,17 @@ fun stageLabel(stage: InstallStage): String = stringResource(
         InstallStage.LOGGING_CONFIG -> R.string.versions_stage_logging_config
         InstallStage.VERIFICATION -> R.string.versions_stage_verification
         InstallStage.COMPLETE -> R.string.versions_stage_complete
+    }
+)
+
+/** Human-readable label for a loader install stage. */
+@Composable
+fun loaderStageLabel(stage: LoaderInstallStage): String = stringResource(
+    when (stage) {
+        LoaderInstallStage.PREPARING -> R.string.loader_stage_preparing
+        LoaderInstallStage.METADATA -> R.string.loader_stage_metadata
+        LoaderInstallStage.LIBRARIES -> R.string.loader_stage_libraries
+        LoaderInstallStage.VERIFICATION -> R.string.loader_stage_verification
+        LoaderInstallStage.COMPLETE -> R.string.loader_stage_complete
     }
 )

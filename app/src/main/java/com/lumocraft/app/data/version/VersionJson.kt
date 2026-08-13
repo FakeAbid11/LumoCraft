@@ -54,19 +54,57 @@ object VersionJson {
 
             val path = artifact?.optString("path")?.takeIf { it.isNotEmpty() }
                 ?: entry.optString("path").takeIf { it.isNotEmpty() }
-                ?: continue
             val url = artifact?.optString("url")?.takeIf { it.isNotEmpty() }
-                ?: AppConfig.LIBRARIES_BASE_URL + path
+                ?: entry.optString("url").takeIf { it.isNotEmpty() }
+
+            if (path == null) {
+                // Loader profiles (Fabric) publish maven coordinates instead
+                // of Mojang download objects: resolve the path and URL from
+                // `name` + `url` so the standard library pipeline applies.
+                val maven = mavenRef(entry, url)
+                if (maven == null) continue
+                result += maven
+                continue
+            }
 
             result += LibraryRef(
                 path = path,
                 sha1 = artifact?.optString("sha1")?.takeIf { it.isNotEmpty() },
                 size = artifact?.optLong("size", -1L)?.takeIf { it >= 0 },
-                url = url,
+                url = url ?: AppConfig.LIBRARIES_BASE_URL + path,
                 classifier = classifier
             )
         }
         return result
+    }
+
+    /**
+     * Resolves a maven-style library entry (`name` group:artifact:version
+     * [+classifier], optional `url` base, optional `sha1`/`size`) into a
+     * [LibraryRef] in maven folder layout, or null when unparseable.
+     */
+    private fun mavenRef(entry: JSONObject, url: String?): LibraryRef? {
+        val name = entry.optString("name")
+        if (name.isEmpty()) return null
+        val coords = name.split(':')
+        if (coords.size < 3) return null
+        val group = coords[0].replace('.', '/')
+        val artifactName = coords[1]
+        val version = coords[2]
+        val classifier = coords.getOrNull(3)
+        val fileName = buildString {
+            append(artifactName).append('-').append(version)
+            if (!classifier.isNullOrEmpty()) append('-').append(classifier)
+            append(".jar")
+        }
+        val path = "$group/$artifactName/$version/$fileName"
+        return LibraryRef(
+            path = path,
+            sha1 = entry.optString("sha1").takeIf { it.isNotEmpty() },
+            size = entry.optLong("size", -1L).takeIf { it >= 0 },
+            url = (url?.takeIf { it.isNotEmpty() } ?: AppConfig.LIBRARIES_BASE_URL) + path,
+            classifier = classifier
+        )
     }
 
     /**

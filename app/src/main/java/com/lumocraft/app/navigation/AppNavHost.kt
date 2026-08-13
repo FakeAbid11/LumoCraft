@@ -11,6 +11,7 @@ import com.lumocraft.app.ui.home.HomeScreen
 import com.lumocraft.app.ui.input.ControlsPreviewScreen
 import com.lumocraft.app.ui.input.LayoutEditorScreen
 import com.lumocraft.app.ui.launch.LaunchScreen
+import com.lumocraft.app.ui.loader.LoaderManagerScreen
 import com.lumocraft.app.ui.performance.PerformanceDashboardScreen
 import com.lumocraft.app.ui.settings.SettingsScreen
 import com.lumocraft.app.ui.versions.VersionsScreen
@@ -41,7 +42,14 @@ fun AppNavHost(
             AccountsScreen()
         }
         composable(LumoDestination.VERSIONS.route) {
-            VersionsScreen()
+            VersionsScreen(
+                onOpenLoaders = { navController.navigate(LOADERS_ROUTE) }
+            )
+        }
+        composable(LOADERS_ROUTE) {
+            LoaderManagerScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
         composable(LumoDestination.SETTINGS.route) {
             SettingsScreen(
@@ -78,3 +86,4 @@ private const val LAUNCH_ROUTE = "launch"
 private const val INPUT_PREVIEW_ROUTE = "input/preview"
 private const val INPUT_LAYOUT_ROUTE = "input/layout"
 private const val PERFORMANCE_ROUTE = "performance"
+private const val LOADERS_ROUTE = "loaders"

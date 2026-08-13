@@ -38,6 +38,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,10 +56,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lumocraft.app.R
+import com.lumocraft.app.domain.loader.LoaderInstance
 import com.lumocraft.app.domain.version.InstallProgress
 import com.lumocraft.app.domain.version.InstallState
 import com.lumocraft.app.domain.version.MinecraftVersion
 import com.lumocraft.app.domain.version.VersionFilter
+
+/** One removal request waiting for the confirm dialog. */
+private sealed interface PendingRemoval {
+    data class Version(val version: MinecraftVersion) : PendingRemoval
+    data class Loader(val instance: LoaderInstance) : PendingRemoval
+}
 
 /**
  * Safe area pipeline of the Versions tab:
@@ -69,18 +78,24 @@ import com.lumocraft.app.domain.version.VersionFilter
 @Composable
 fun VersionsScreen(
     modifier: Modifier = Modifier,
+    onOpenLoaders: () -> Unit = {},
     viewModel: VersionViewModel = viewModel(factory = VersionViewModel.Factory),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedVersion by remember { mutableStateOf<MinecraftVersion?>(null) }
+    var pendingRemoval by remember { mutableStateOf<PendingRemoval?>(null) }
 
     LaunchedEffect(uiState.errorMessageRes) {
         uiState.errorMessageRes?.let { messageRes ->
             snackbarHostState.showSnackbar(context.getString(messageRes))
             viewModel.clearInstallError()
         }
+    }
+
+    LaunchedEffect(selectedVersion) {
+        selectedVersion?.let { viewModel.fetchLoaderVersions(it.id) }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -90,6 +105,22 @@ fun VersionsScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 8.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.nav_versions),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    TextButton(onClick = onOpenLoaders) {
+                        Text(stringResource(R.string.loader_manager_open))
+                    }
+                }
                 OutlinedTextField(
                     value = uiState.searchQuery,
                     onValueChange = viewModel::setSearchQuery,
@@ -123,10 +154,12 @@ fun VersionsScreen(
                     else -> VersionList(
                         versions = uiState.visibleVersions,
                         installStates = uiState.installStates,
+                        installedLoaders = uiState.installedLoaders,
                         installingId = uiState.installingId,
                         installProgress = uiState.installProgress,
                         onVersionClick = { selectedVersion = it }
-                    )                }
+                    )
+                }
             }
         }
         SnackbarHost(
@@ -140,15 +173,82 @@ fun VersionsScreen(
             VersionDetailsSheet(
                 version = version,
                 state = uiState.installStates[version.id],
+                loaders = uiState.loadersFor(version.id),
+                loaderVersionsState = uiState.loaderVersions[version.id],
                 progress = if (uiState.installingId == version.id) {
                     uiState.installProgress
                 } else {
                     null
                 },
+                loaderProgress = uiState.loaderInstallProgress,
+                installingLoaderId = uiState.installingLoaderId,
                 onInstall = { viewModel.install(version) },
-                onRepair = { viewModel.repair(version) }
+                onRepair = { viewModel.repair(version) },
+                onRemove = { pendingRemoval = PendingRemoval.Version(version) },
+                onRetryLoaderVersions = { viewModel.retryLoaderVersions(version.id) },
+                onInstallLoader = { loaderVersion ->
+                    viewModel.installLoader(version.id, loaderVersion)
+                },
+                onRepairLoader = { instanceId -> viewModel.repairLoader(instanceId) },
+                onRemoveLoader = { instanceId ->
+                    uiState.installedLoaders[instanceId]?.let { instance ->
+                        pendingRemoval = PendingRemoval.Loader(instance)
+                    }
+                }
             )
         }
+    }
+
+    pendingRemoval?.let { removal ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = {
+                Text(
+                    stringResource(
+                        if (removal is PendingRemoval.Loader) {
+                            R.string.loader_remove_confirm_title
+                        } else {
+                            R.string.versions_remove_confirm_title
+                        }
+                    )
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (removal is PendingRemoval.Loader) {
+                            R.string.loader_remove_confirm_message
+                        } else {
+                            R.string.versions_remove_confirm_message
+                        },
+                        when (removal) {
+                            is PendingRemoval.Loader -> removal.instance.metadata.minecraftVersion
+                            is PendingRemoval.Version -> removal.version.id
+                        }
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        when (removal) {
+                            is PendingRemoval.Loader ->
+                                viewModel.removeLoader(removal.instance.instanceId)
+                            is PendingRemoval.Version ->
+                                viewModel.remove(removal.version)
+                        }
+                        pendingRemoval = null
+                    }
+                ) {
+                    Text(stringResource(R.string.loader_remove))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 }
 
@@ -287,6 +387,7 @@ private fun VersionEmptyState() {
 private fun VersionList(
     versions: List<MinecraftVersion>,
     installStates: Map<String, InstallState>,
+    installedLoaders: Map<String, LoaderInstance>,
     installingId: String?,
     installProgress: InstallProgress?,
     onVersionClick: (MinecraftVersion) -> Unit,
@@ -300,6 +401,8 @@ private fun VersionList(
             VersionListItem(
                 version = version,
                 state = installStates[version.id],
+                loaderInstances = installedLoaders.values
+                    .filter { it.metadata.minecraftVersion == version.id },
                 isInstalling = installingId == version.id,
                 progress = installProgress,
                 onClick = { onVersionClick(version) }

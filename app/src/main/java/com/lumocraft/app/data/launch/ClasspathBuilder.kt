@@ -4,6 +4,7 @@ import com.lumocraft.app.data.performance.Fingerprints
 import com.lumocraft.app.data.storage.StorageManager
 import com.lumocraft.app.data.version.VersionJson
 import com.lumocraft.app.domain.launch.LaunchException
+import com.lumocraft.app.domain.loader.LoaderLaunchConfiguration
 import com.lumocraft.app.domain.performance.CacheManager
 import com.lumocraft.app.domain.performance.LaunchCacheEntry
 import com.lumocraft.app.domain.version.LibraryRef
@@ -28,6 +29,10 @@ data class BuiltClasspath(
  * jar, in manifest order with duplicates removed. Every file must exist;
  * missing files fail with a detailed message.
  *
+ * A [LoaderLaunchConfiguration] (from the generic loader interface, e.g.
+ * Fabric) appends its own libraries and replaces the vanilla client jar
+ * with the loader's patched jar; vanilla launches pass the default.
+ *
  * Results are cached in the [CacheManager] keyed by the version JSON
  * fingerprint: an unchanged version resolves instantly without touching
  * the disk. Cache rows never rebuild unchanged data.
@@ -37,7 +42,10 @@ class ClasspathBuilder(
     private val cache: CacheManager? = null,
 ) {
 
-    suspend fun build(versionId: String): Result<BuiltClasspath> = withContext(Dispatchers.IO) {
+    suspend fun build(
+        versionId: String,
+        loaderConfig: LoaderLaunchConfiguration = LoaderLaunchConfiguration(),
+    ): Result<BuiltClasspath> = withContext(Dispatchers.IO) {
         val chain = loadChain(versionId)
             ?: return@withContext Result.failure(
                 LaunchException("Version JSON for '$versionId' is missing or unreadable")
@@ -72,6 +80,14 @@ class ClasspathBuilder(
                 ordered.putIfAbsent(ref.path, storage.libraryFile(ref.path))
             }
         }
+        // Loader libraries (Fabric maven artifacts) are appended on top;
+        // files already resolved through the version chain are skipped.
+        val chainPaths = ordered.values.map { it.absolutePath }.toSet()
+        loaderConfig.libraries.forEach { lib ->
+            if (lib.absolutePath !in chainPaths) {
+                ordered[lib.absolutePath] = lib
+            }
+        }
 
         val missing = ordered.filterValues { !it.isFile }.keys.toList()
         if (missing.isNotEmpty()) {
@@ -80,21 +96,25 @@ class ClasspathBuilder(
             )
         }
 
-        val clientJar = clientJarFile(versionId)
+        val clientJar = loaderConfig.clientJar ?: clientJarFile(versionId)
         if (!clientJar.isFile) {
             return@withContext Result.failure(
                 LaunchException("Client jar not found: ${clientJar.absolutePath}")
             )
         }
 
-        val mainClass = chain.firstNotNullOfOrNull { file ->
-            runCatching { JSONObject(file.readText()) }.getOrNull()
-                ?.optString("mainClass")?.takeIf { it.isNotEmpty() }
-        } ?: return@withContext Result.failure(
+        val mainClass = loaderConfig.mainClass
+            ?: chain.firstNotNullOfOrNull { file ->
+                runCatching { JSONObject(file.readText()) }.getOrNull()
+                    ?.optString("mainClass")?.takeIf { it.isNotEmpty() }
+            } ?: return@withContext Result.failure(
             LaunchException("No mainClass declared for '$versionId'")
         )
 
-        val entries = ordered.values.toMutableList().also { it.add(clientJar) }
+        val entries = ordered.values
+            .filterNot { it == clientJar }
+            .toMutableList()
+            .also { it.add(clientJar) }
         val built = BuiltClasspath(
             classpath = entries.joinToString(File.pathSeparator) { it.absolutePath },
             libraryFiles = entries,

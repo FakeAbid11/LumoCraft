@@ -8,6 +8,8 @@ import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.launch.LaunchProgress
 import com.lumocraft.app.domain.launch.LaunchState
 import com.lumocraft.app.domain.launch.LaunchValidationReport
+import com.lumocraft.app.domain.loader.LoaderLaunchConfigurator
+import com.lumocraft.app.domain.loader.LoaderLaunchConfiguration
 import com.lumocraft.app.domain.native.NativeException
 import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.native.NativeStatus
@@ -51,6 +53,12 @@ class DefaultLaunchPipeline(
     private val crashAnalyzer: CrashAnalyzer,
     private val logs: LauncherLogRepository,
     private val performance: PerformanceManager,
+    /**
+     * Generic loader integration: the pipeline asks
+     * `loader.configureLaunch(context)` without knowing which loader is
+     * active. Vanilla launches receive an all-default configuration.
+     */
+    private val loader: LoaderLaunchConfigurator = NoopLoaderConfigurator,
     /**
      * Injectable input snapshot for the session. The [LaunchPipeline]
      * interface is unchanged; a provider keeps this decoupled until
@@ -103,8 +111,14 @@ class DefaultLaunchPipeline(
             logs.logMemoryProfile(performance.deviceProfile())
             logs.logJvmProfileSelection(performance.effectiveJvmProfile(), performance.jvmProfileOverride() == null)
 
+            _state.value = LaunchProgress(LaunchState.PREPARING, "Resolving loader")
+            val loaderConfig = loader.configureLaunch(context).getOrElse { throw it }
+            logs.logLoaderConfiguration(loaderConfig)
+
             _state.value = LaunchProgress(LaunchState.PREPARING, "Fetching client jar")
-            clientJarManager.ensure(context.versionId).getOrElse { throw it }
+            if (loaderConfig.clientJar == null) {
+                clientJarManager.ensure(context.versionId).getOrElse { throw it }
+            }
 
             // Natives first: preparation self-heals corrupt extractions, so
             // validation below sees the real state.
@@ -125,7 +139,7 @@ class DefaultLaunchPipeline(
 
             val classpathStart = System.nanoTime()
             _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Resolving classpath")
-            val built = classpathBuilder.build(context.versionId).getOrElse { throw it }
+            val built = classpathBuilder.build(context.versionId, loaderConfig).getOrElse { throw it }
             classpathMs = elapsedMs(classpathStart)
             logs.logCacheEvent("classpath", builtFromCache(built), "${built.libraryFiles.size} libraries")
             writeLauncherLine(
@@ -148,18 +162,26 @@ class DefaultLaunchPipeline(
                 nativesDirectory = nativesDirectory,
                 jniEnvironment = jniEnvironment,
                 rendererProfile = rendererProfile,
+                loaderConfig = loaderConfig,
                 logs = logs
+            )
+            val finalArgs = args.copy(
+                mainClass = loaderConfig.mainClass ?: args.mainClass,
+                jvmArguments = args.jvmArguments +
+                    loaderConfig.jvmArguments.filter { it !in args.jvmArguments },
+                gameArguments = args.gameArguments +
+                    loaderConfig.gameArguments.filter { it !in args.gameArguments }
             )
 
             val javaHome = File(context.runtime.path)
             _state.value = LaunchProgress(LaunchState.STARTING_JAVA, "Starting Java")
             writeLauncherLine("JVM: $javaHome")
-            writeLauncherLine("JVM args: ${args.jvmArguments.joinToString(" ")}")
-            writeLauncherLine("Game args: ${args.gameArguments.joinToString(" ")}")
+            writeLauncherLine("JVM args: ${finalArgs.jvmArguments.joinToString(" ")}")
+            writeLauncherLine("Game args: ${finalArgs.gameArguments.joinToString(" ")}")
 
             val command = JavaCommand(
                 executable = File(javaHome, "bin/java"),
-                arguments = args.jvmArguments + args.mainClass + args.gameArguments,
+                arguments = finalArgs.jvmArguments + finalArgs.mainClass + finalArgs.gameArguments,
                 workingDirectory = context.gameDirectory,
                 environment = environment.buildProcessEnvironment(javaHome)
             )
@@ -235,6 +257,7 @@ class DefaultLaunchPipeline(
         nativesDirectory: File,
         jniEnvironment: Map<String, String>,
         rendererProfile: com.lumocraft.app.domain.native.RendererProfile,
+        loaderConfig: LoaderLaunchConfiguration,
         logs: LauncherLogRepository,
     ): LaunchArguments {
         val resolvedConfig = performance.resolveJvmConfiguration(context.jvmConfiguration)
@@ -243,7 +266,8 @@ class DefaultLaunchPipeline(
             classpath = classpath,
             jniEnvironment = jniEnvironment,
             rendererProfile = rendererProfile,
-            resolvedConfig = resolvedConfig
+            resolvedConfig = resolvedConfig,
+            loaderConfig = loaderConfig
         )
         val cache = performance.cache()
         val cached = cache.getEntry(context.versionId)
@@ -284,6 +308,7 @@ class DefaultLaunchPipeline(
         jniEnvironment: Map<String, String>,
         rendererProfile: com.lumocraft.app.domain.native.RendererProfile,
         resolvedConfig: com.lumocraft.app.domain.runtime.JvmConfiguration,
+        loaderConfig: LoaderLaunchConfiguration,
     ): String = listOf(
         context.versionId,
         context.account.username,
@@ -300,7 +325,11 @@ class DefaultLaunchPipeline(
         rendererProfile.resolutionScale.percent,
         rendererProfile.fpsLimit ?: "unlimited",
         rendererProfile.vsync,
-        rendererProfile.mipmaps
+        rendererProfile.mipmaps,
+        loaderConfig.type.id,
+        loaderConfig.jvmArguments.joinToString(","),
+        loaderConfig.gameArguments.joinToString(","),
+        loaderConfig.mainClass ?: ""
     ).joinToString("|")
 
     private fun encodeArguments(args: LaunchArguments): String =
@@ -400,4 +429,17 @@ class DefaultLaunchPipeline(
     private companion object {
         const val MAX_REPORTED_LIBS = 10
     }
+}
+
+/**
+ * Vanilla fallback for the loader slot: no loader is active, everything
+ * keeps the version JSON defaults. Used when the pipeline is constructed
+ * without a loader registry (tests, future loader-less builds).
+ */
+private object NoopLoaderConfigurator : LoaderLaunchConfigurator {
+    override suspend fun configureLaunch(
+        context: LaunchContext,
+    ): Result<LoaderLaunchConfiguration> = Result.success(LoaderLaunchConfiguration())
+
+    override suspend fun clientJarFor(versionId: String): java.io.File? = null
 }

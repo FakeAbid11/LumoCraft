@@ -18,6 +18,12 @@ import com.lumocraft.app.data.launch.LaunchArgumentBuilder
 import com.lumocraft.app.data.launch.LaunchEnvironment
 import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.data.launch.LaunchValidator
+import com.lumocraft.app.data.loader.CompositeLoaderLaunchConfigurator
+import com.lumocraft.app.data.loader.DefaultLoaderRepository
+import com.lumocraft.app.data.loader.FabricInstaller
+import com.lumocraft.app.data.loader.FabricLaunchConfigurator
+import com.lumocraft.app.data.loader.FabricMetadataService
+import com.lumocraft.app.data.loader.LoaderScanner
 import com.lumocraft.app.data.native.DefaultNativeRuntimeManager
 import com.lumocraft.app.data.native.NativeArchitecture
 import com.lumocraft.app.data.native.NativeExtractionService
@@ -53,6 +59,8 @@ import com.lumocraft.app.domain.input.InputManager
 import com.lumocraft.app.domain.input.InputRepository
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchPipeline
+import com.lumocraft.app.domain.loader.LoaderLaunchConfigurator
+import com.lumocraft.app.domain.loader.LoaderRepository
 import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.performance.MemoryOptimizer
 import com.lumocraft.app.domain.performance.PerformanceManager
@@ -145,6 +153,42 @@ class LumoCraftApplication : Application() {
         )
     }
 
+    val loaderRepository: LoaderRepository by lazy {
+        val client = HttpClient()
+        val storage = storageManager
+        val downloader = Downloader(client, throughput = throughputTracker)
+        val verificationService = VerificationService(storage)
+        val metadataService = FabricMetadataService(client, storage)
+        val libraryInstaller = LibraryInstaller(storage, downloader, downloadScheduler)
+        val onFilesChanged: suspend (String) -> Unit = { versionId ->
+            performanceManager.cache().removeEntry(versionId)
+            performanceManager.verifier().invalidate(versionId)
+        }
+        DefaultLoaderRepository(
+            storage = storage,
+            scanner = LoaderScanner(storage, verificationService),
+            sources = listOf(metadataService),
+            installers = listOf(
+                FabricInstaller(
+                    storage = storage,
+                    downloader = downloader,
+                    metadataService = metadataService,
+                    libraryInstaller = libraryInstaller,
+                    verificationService = verificationService,
+                    onFilesChanged = onFilesChanged
+                )
+            ),
+            onFilesChanged = onFilesChanged
+        )
+    }
+
+    /** Generic loader integration point consumed by the launch pipeline. */
+    val loaderLaunchConfigurator: LoaderLaunchConfigurator by lazy {
+        CompositeLoaderLaunchConfigurator(
+            configurators = listOf(FabricLaunchConfigurator(storageManager, loaderRepository))
+        )
+    }
+
     val runtimeRepository: RuntimeRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
@@ -180,7 +224,8 @@ class LumoCraftApplication : Application() {
             runtimeVerifier = RuntimeVerifier(),
             nativeRuntimeManager = nativeRuntimeManager,
             smartVerifier = performanceManager.verifier(),
-            runtimeCache = runtimeCache
+            runtimeCache = runtimeCache,
+            loaderConfigurator = loaderLaunchConfigurator
         )
     }
 
@@ -198,6 +243,7 @@ class LumoCraftApplication : Application() {
             crashAnalyzer = CrashAnalyzer(),
             logs = launcherLogRepository,
             performance = performanceManager,
+            loader = loaderLaunchConfigurator,
             inputConfiguration = { inputManager.configuration() }
         )
     }

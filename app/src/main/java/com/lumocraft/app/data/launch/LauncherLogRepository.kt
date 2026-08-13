@@ -1,6 +1,8 @@
 package com.lumocraft.app.data.launch
 
 import com.lumocraft.app.data.storage.StorageManager
+import com.lumocraft.app.domain.loader.LoaderLaunchConfiguration
+import com.lumocraft.app.domain.loader.LoaderType
 import com.lumocraft.app.domain.native.RendererProfile
 import java.io.BufferedWriter
 import java.io.File
@@ -196,6 +198,56 @@ class LauncherLogRepository(private val storage: StorageManager) {
     /** Logs an optimization decision (e.g. adaptive concurrency changes). */
     suspend fun logOptimizationDecision(message: String) {
         writeLine("Optimization: $message")
+    }
+
+    /** Logs a loader installation. */
+    suspend fun logLoaderInstallation(
+        type: LoaderType,
+        minecraftVersion: String,
+        loaderVersion: String,
+        instanceId: String,
+    ) {
+        writeSection("Loader installation")
+        writeLine(
+            "loader=${type.id} minecraft=$minecraftVersion " +
+                "loaderVersion=$loaderVersion instance=$instanceId"
+        )
+    }
+
+    /** Logs a loader repair (instance, redownloaded files, outcome). */
+    suspend fun logLoaderRepair(instanceId: String, filesRedownloaded: Int, ok: Boolean) {
+        writeSection("Loader repair")
+        writeLine("instance=$instanceId filesRedownloaded=$filesRedownloaded ok=$ok")
+    }
+
+    /** Logs a loader removal. */
+    suspend fun logLoaderRemoval(type: LoaderType, instanceId: String) {
+        writeSection("Loader removal")
+        writeLine("loader=${type.id} instance=$instanceId")
+    }
+
+    /** Logs a compatibility decision (loader version vs Minecraft version). */
+    suspend fun logLoaderCompatibility(
+        type: LoaderType,
+        minecraftVersion: String,
+        loaderVersions: Int,
+        compatible: Boolean,
+    ) {
+        writeLine(
+            "Loader compatibility: ${type.id} for $minecraftVersion " +
+                "($loaderVersions published, compatible=$compatible)"
+        )
+    }
+
+    /** Logs the loader configuration applied to a game session. */
+    suspend fun logLoaderConfiguration(config: LoaderLaunchConfiguration) {
+        if (config.type == LoaderType.VANILLA) return
+        writeSection("Loader launch configuration")
+        writeLine(
+            "loader=${config.type.id} mainClass=${config.mainClass} " +
+                "libraries=${config.libraries.size} clientJar=${config.clientJar?.name} " +
+                "jvmArgs=${config.jvmArguments.size} gameArgs=${config.gameArguments.size}"
+        )
     }
 
     /** Closes the session file; the file stays on disk. */

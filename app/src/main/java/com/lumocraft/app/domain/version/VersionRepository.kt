@@ -26,4 +26,12 @@ interface VersionRepository {
      * files, then re-verifies.
      */
     fun repair(version: MinecraftVersion): Flow<InstallProgress>
+
+    /**
+     * Uninstalls a version: removes its version directory (version JSON,
+     * client jar, metadata, logging configuration). Loader instances
+     * built on top of it are left untouched (they resolve their own
+     * parent at launch time).
+     */
+    suspend fun remove(versionId: String): Result<Unit>
 }

@@ -43,16 +43,23 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
         rendererProfile: RendererProfile? = null,
     ): Result<LaunchArguments> = withContext(Dispatchers.IO) {
         runCatching {
-            val json = readVersionJson(context.versionId)
-            val tokens = tokenMap(context, json, classpath, nativesDirectory, rendererProfile)
+            val chain = loadChain(context.versionId)
+                ?: throw LaunchException("Version JSON missing for '${context.versionId}'")
+            val tokens = tokenMap(context, chain, classpath, nativesDirectory, rendererProfile)
 
             val jvmArguments = buildList {
-                addAll(VersionJson.resolveArguments(json.optJSONObject("arguments")?.optJSONArray("jvm")))
-                json.optJSONObject("logging")
-                    ?.optJSONObject("client")
-                    ?.optString("argument")
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { add(resolveTokens(it, tokens)) }
+                for ((_, json) in chain) {
+                    val resolved = VersionJson.resolveArguments(
+                        json.optJSONObject("arguments")?.optJSONArray("jvm")
+                    )
+                    addAll(resolved.filter { it !in this })
+                }
+                chain.firstNotNullOfOrNull { (_, json) ->
+                    json.optJSONObject("logging")
+                        ?.optJSONObject("client")
+                        ?.optString("argument")
+                        ?.takeIf { it.isNotEmpty() }
+                }?.let { add(it) }
                 addAll(context.jvmConfiguration.buildArguments())
                 addAll(androidArguments(environment, nativesDirectory))
                 jniEnvironment.forEach { (key, value) -> add("-D$key=$value") }
@@ -60,18 +67,21 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             }.map { resolveTokens(it, tokens) }
 
             val gameArguments = buildList {
-                val args = json.optJSONObject("arguments")?.optJSONArray("game")
-                if (args != null) {
-                    addAll(VersionJson.resolveArguments(args))
-                } else {
-                    json.optString("minecraftArguments")
-                        .takeIf { it.isNotEmpty() }
-                        ?.let { legacy -> addAll(tokenizeLegacy(legacy)) }
+                for ((_, json) in chain) {
+                    val args = json.optJSONObject("arguments")?.optJSONArray("game")
+                    if (args != null) {
+                        addAll(VersionJson.resolveArguments(args).filter { it !in this })
+                    } else {
+                        json.optString("minecraftArguments")
+                            .takeIf { it.isNotEmpty() }
+                            ?.let { legacy -> addAll(tokenizeLegacy(legacy).filter { it !in this }) }
+                    }
                 }
             }.map { resolveTokens(it, tokens) }
 
-            val mainClass = json.optString("mainClass").takeIf { it.isNotEmpty() }
-                ?: throw LaunchException("No mainClass declared for '${context.versionId}'")
+            val mainClass = chain.firstNotNullOfOrNull { (_, json) ->
+                json.optString("mainClass").takeIf { it.isNotEmpty() }
+            } ?: throw LaunchException("No mainClass declared for '${context.versionId}'")
 
             LaunchArguments(
                 jvmArguments = jvmArguments,
@@ -81,27 +91,55 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
         }
     }
 
-    private fun readVersionJson(versionId: String): JSONObject {
-        val file = storage.versionJsonFile(versionId)
-        return runCatching { JSONObject(file.readText()) }.getOrNull()
-            ?: throw LaunchException("Version JSON missing for '$versionId'")
+    /**
+     * Leaf-first inheritsFrom chain of (version id, parsed JSON), or null.
+     * Ids let tokens reference the file layout of the version that actually
+     * declared each resource (e.g. the logging config, which is stored under
+     * the base version's directory for inherited loader profiles).
+     */
+    private fun loadChain(versionId: String): List<Pair<String, JSONObject>>? {
+        val result = mutableListOf<Pair<String, JSONObject>>()
+        var current = versionId
+        val seen = mutableSetOf<String>()
+        while (true) {
+            if (!seen.add(current)) return null
+            val file = storage.versionJsonFile(current)
+            if (!file.isFile) return null
+            val json = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return null
+            result.add(current to json)
+            val parent = json.optString("inheritsFrom").takeIf { it.isNotEmpty() } ?: break
+            current = parent
+        }
+        return result
     }
 
     private fun tokenMap(
         context: LaunchContext,
-        json: JSONObject,
+        chain: List<Pair<String, JSONObject>>,
         classpath: String,
         nativesDirectory: File,
         rendererProfile: RendererProfile?,
     ): Map<String, String> {
-        val assetIndexId = json.optJSONObject("assetIndex")?.optString("id")
-            ?.takeIf { it.isNotEmpty() }
-            ?: json.optString("assets")
-        val loggingId = json.optJSONObject("logging")
-            ?.optJSONObject("client")
-            ?.optJSONObject("file")
-            ?.optString("id")
-            .orEmpty()
+        val assetIndexId = chain.firstNotNullOfOrNull { (_, json) ->
+            json.optJSONObject("assetIndex")?.optString("id")?.takeIf { it.isNotEmpty() }
+        } ?: chain.firstNotNullOfOrNull { (_, json) ->
+            json.optString("assets").takeIf { it.isNotEmpty() }
+        } ?: ""
+        val logging = chain.firstNotNullOfOrNull { (versionId, json) ->
+            json.optJSONObject("logging")
+                ?.optJSONObject("client")
+                ?.optJSONObject("file")
+                ?.optString("id")
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { id -> versionId to id }
+        }
+        val loggingId = logging?.second.orEmpty()
+        // The logging file is stored under the version that declared it, so
+        // inherited loader profiles resolve the path against the base version.
+        val loggingVersionId = logging?.first ?: context.versionId
+        val versionType = chain.firstNotNullOfOrNull { (_, json) ->
+            json.optString("type").takeIf { it.isNotEmpty() }
+        } ?: "release"
         val resolution = rendererProfile
             ?.effectiveResolution()
             ?: RendererProfile.DEFAULT_WINDOW
@@ -113,7 +151,7 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             "clientid" to "client",
             "user_type" to "legacy",
             "version_name" to context.versionId,
-            "version_type" to json.optString("type", "release"),
+            "version_type" to versionType,
             "assets_root" to storage.assetsDirectory().absolutePath,
             "assets_index_name" to assetIndexId,
             "game_assets" to File(context.gameDirectory, "resources").absolutePath,
@@ -123,7 +161,7 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             "launcher_name" to LAUNCHER_NAME,
             "launcher_version" to BuildConfig.VERSION_NAME,
             "classpath" to classpath,
-            "path" to storage.loggingConfigFile(context.versionId, loggingId).absolutePath,
+            "path" to storage.loggingConfigFile(loggingVersionId, loggingId).absolutePath,
             "resolution_width" to resolution.width.toString(),
             "resolution_height" to resolution.height.toString()
         )
