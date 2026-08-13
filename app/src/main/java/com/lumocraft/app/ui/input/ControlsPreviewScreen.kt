@@ -103,7 +103,7 @@ fun ControlsPreviewScreen(
  */
 private class GamepadInputView(
     context: Context,
-    manager: InputManager,
+    private val manager: InputManager,
 ) : View(context) {
 
     private val controller = manager.controller as? AndroidControllerManager

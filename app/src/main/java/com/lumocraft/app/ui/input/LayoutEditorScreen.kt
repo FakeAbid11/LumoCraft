@@ -35,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.roundToPx
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -159,8 +160,8 @@ private fun EditorEditLayer(
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            roundToPx(centerX - widthDp / 2f),
-                            roundToPx(centerY - heightDp / 2f)
+                            (centerX - widthDp / 2f).roundToPx(),
+                            (centerY - heightDp / 2f).roundToPx()
                         )
                     }
                     .size(widthDp, heightDp)
