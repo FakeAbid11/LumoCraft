@@ -110,9 +110,14 @@ class AndroidControllerManager(context: Context) : ControllerManager {
     }
 
     private fun refresh() {
-        val device = androidInputManager.inputDeviceIds
-            .mapNotNull { androidInputManager.getInputDevice(it) }
-            .firstOrNull { it.isGamepad() }
+        var device: InputDevice? = null
+        for (id in androidInputManager.inputDeviceIds) {
+            val candidate = androidInputManager.getInputDevice(id)
+            if (candidate?.isGamepad() == true) {
+                device = candidate
+                break
+            }
+        }
         val connected = device != null
         if (connected) {
             lastDeviceName = device?.name

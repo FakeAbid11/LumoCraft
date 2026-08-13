@@ -71,7 +71,7 @@ object LayoutGeometry {
 
     fun grid(value: Float, grid: Float = EDITOR_GRID): Float = (value / grid).roundToInt() * grid
 
-    private fun Float.roundToInt(): Int = kotlin.math.roundToInt()
+    private fun Float.roundToInt(): Int = kotlin.math.roundToInt(this)
 
     const val EDITOR_GRID = 1f / 24f
     const val EDITOR_SNAP_RADIUS = 1f / 160f

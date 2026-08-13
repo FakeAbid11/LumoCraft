@@ -1,5 +1,8 @@
 package com.lumocraft.app.domain.input
 
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+
 /** Current joystick deflection, for the pad visual. */
 data class JoystickState(
     val controlId: String? = null,
