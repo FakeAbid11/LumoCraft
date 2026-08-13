@@ -6,6 +6,6 @@ package com.lumocraft.app.domain.launch
  * mismatch, ...) instead of a generic one.
  */
 class LaunchException(
-    val type: LaunchErrorType = LaunchErrorType.UNKNOWN,
-    message: String
+    message: String,
+    val type: LaunchErrorType = LaunchErrorType.UNKNOWN
 ) : Exception(message)

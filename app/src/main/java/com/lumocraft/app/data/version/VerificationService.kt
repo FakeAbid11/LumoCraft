@@ -62,7 +62,7 @@ class VerificationService(private val storage: StorageManager) {
         var verifiedAssets = 0
         var totalAssets = 0
         val indexFile = assetRef?.let { storage.assetIndexFile(it.id) }
-        if (assetRef != null && indexFile.isFile) {
+        if (assetRef != null && indexFile?.isFile == true) {
             val objects = runCatching {
                 JSONObject(indexFile.readText()).optJSONObject("objects") ?: JSONObject()
             }.getOrDefault(JSONObject())

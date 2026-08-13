@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /** Immutable state for the Launch screen. */
 data class LaunchUiState(
@@ -45,11 +47,12 @@ class LaunchViewModel(
 
     private val _logFileExported = MutableStateFlow(false)
     private val _pendingContext = MutableStateFlow(application.pendingLaunchContext)
+    private val _logLines = MutableStateFlow<List<String>>(emptyList())
 
     val uiState: StateFlow<LaunchUiState> = combine(
         _pendingContext,
         pipeline.state,
-        pipeline.logLines,
+        _logLines,
         _logFileExported
     ) { context, launchProgress, lines, exported ->
         LaunchUiState(
@@ -72,6 +75,11 @@ class LaunchViewModel(
             application.pendingLaunchContext = null
             if (pipeline.state.value.state == LaunchState.IDLE) {
                 pipeline.launch(context)
+            }
+        }
+        viewModelScope.launch {
+            pipeline.logLines.collect { line ->
+                _logLines.update { (it + line).takeLast(MAX_LOG_LINES) }
             }
         }
     }
@@ -104,6 +112,8 @@ class LaunchViewModel(
     }
 
     companion object {
+        const val MAX_LOG_LINES = 500
+
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = this[APPLICATION_KEY] as LumoCraftApplication

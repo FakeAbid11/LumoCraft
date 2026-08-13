@@ -29,7 +29,7 @@ class DefaultNativeRuntimeManager(
     private val extractionService: NativeExtractionService,
     private val verificationService: NativeVerificationService,
     private val rendererPreference: RendererPreference,
-    detectedArchitecture: RuntimeArchitecture,
+    private val detectedArchitecture: RuntimeArchitecture,
 ) : NativeRuntimeManager {
 
     private val _status = MutableStateFlow(NativeStatus.NOT_PREPARED)

@@ -61,16 +61,11 @@ internal class DownloadTracker(
     private suspend fun emit() = emitMutex.withLock {
         val done = completed.get()
         val bytes = bytesDownloaded.get()
-        listener(
-            stageFraction = when {
-                totalBytes > 0 -> bytes.toFloat() / totalBytes
-                totalFiles > 0 -> done.toFloat() / totalFiles
-                else -> null
-            },
-            filesCompleted = done,
-            filesRemaining = totalFiles - done,
-            downloadedBytes = bytes,
-            totalBytes = totalBytes
-        )
+        val fraction = when {
+            totalBytes > 0 -> bytes.toFloat() / totalBytes
+            totalFiles > 0 -> done.toFloat() / totalFiles
+            else -> null
+        }
+        listener(fraction, done, totalFiles - done, bytes, totalBytes)
     }
 }

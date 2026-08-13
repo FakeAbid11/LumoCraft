@@ -89,7 +89,8 @@ class NativeExtractionService(private val storage: StorageManager) {
                 val jarFiles = extractJarEntries(source.file, targetDir, arch, seenNames)
                 duplicates += jarFiles.count { it.wasDuplicate }
                 extracted += jarFiles.count { !it.wasDuplicate }
-                val kept = jarFiles.filter { !it.wasDuplicate }.map { it.file }
+                val kept = jarFiles.filter { !it.wasDuplicate }
+                    .map { NativeFile(it.name, it.size, sourceJar = source.libraryPath) }
                 allFiles += kept
 
                 jarStamps.removeAll { it.jarPath == source.libraryPath }
@@ -113,9 +114,9 @@ class NativeExtractionService(private val storage: StorageManager) {
     suspend fun loadStamp(versionId: String, arch: RuntimeArchitecture): NativeStamp =
         withContext(Dispatchers.IO) {
             val file = stampFile(versionId, arch)
-            if (!file.isFile) return@withContext NativeStamp(arch, emptyList(), 0)
+            if (!file.isFile) return@withContext NativeStamp(arch.directoryName, emptyList(), 0)
             val json = runCatching { JSONObject(file.readText()) }.getOrNull()
-                ?: return@withContext NativeStamp(arch, emptyList(), 0)
+                ?: return@withContext NativeStamp(arch.directoryName, emptyList(), 0)
             val jars = json.optJSONArray("jars") ?: JSONArray()
             val jarStamps = buildList {
                 for (i in 0 until jars.length()) {

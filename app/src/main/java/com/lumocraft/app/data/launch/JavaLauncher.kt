@@ -49,7 +49,7 @@ class JavaProcessHandle internal constructor(private val process: Process) {
 
     private suspend fun pump(input: InputStream, onLine: suspend (String) -> Unit) =
         withContext(Dispatchers.IO) {
-            val reader = input.bufferedReader(Charsets.UTF_8, BUFFER_SIZE)
+            val reader = input.bufferedReader(Charsets.UTF_8)
             try {
                 while (true) {
                     coroutineContext.ensureActive()
@@ -62,7 +62,6 @@ class JavaProcessHandle internal constructor(private val process: Process) {
         }
 
     private companion object {
-        const val BUFFER_SIZE = 16 * 1024
         const val CANCEL_GRACE_MS = 3_000L
     }
 }

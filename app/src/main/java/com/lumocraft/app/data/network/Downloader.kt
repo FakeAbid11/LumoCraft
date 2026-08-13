@@ -5,6 +5,7 @@ import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 
 /**
  * Reusable downloader with retry and backoff on top of [HttpClient].

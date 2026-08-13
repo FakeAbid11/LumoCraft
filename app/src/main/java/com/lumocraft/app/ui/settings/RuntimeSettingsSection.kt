@@ -235,15 +235,13 @@ private fun RuntimeProgressBar(progress: RuntimeProgress) {
                 progress = { fraction },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp),
-                shape = RoundedCornerShape(3.dp)
+                    .height(6.dp)
             )
         } else {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp),
-                shape = RoundedCornerShape(3.dp)
+                    .height(6.dp)
             )
         }
     }

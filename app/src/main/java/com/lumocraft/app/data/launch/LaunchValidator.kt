@@ -57,8 +57,9 @@ class LaunchValidator(
             )
         }
 
+        val rootJson = json
         val missingLibraries = buildSet {
-            var current = json
+            var current = rootJson
             while (true) {
                 addAll(VersionJson.libraries(current).map { it.path })
                 val parentId = current.optString("inheritsFrom").takeIf { it.isNotEmpty() }

@@ -40,7 +40,7 @@ class AssetInstaller(
     private val concurrency: Int = AppConfig.DOWNLOAD_CONCURRENCY,
 ) {
 
-    suspend fun downloadIndex(
+    internal suspend fun downloadIndex(
         json: JSONObject,
         onProgress: StageListener,
     ): Result<AssetIndexData> = withContext(Dispatchers.IO) {
@@ -94,7 +94,7 @@ class AssetInstaller(
      * Downloads all asset objects from the parsed index.
      * @param forceHashes object hashes that must be redownloaded (repair mode).
      */
-    suspend fun downloadObjects(
+    internal suspend fun downloadObjects(
         data: AssetIndexData,
         forceHashes: Set<String> = emptySet(),
         onProgress: StageListener,

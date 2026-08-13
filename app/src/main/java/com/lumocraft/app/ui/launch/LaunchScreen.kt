@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -159,7 +159,7 @@ private fun StageCard(
                     )
                     Text(
                         text = progress.message
-                            ?: stageLabel(progress.state),
+                            ?: stringResource(stageLabel(progress.state)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -217,7 +217,7 @@ private fun StageCard(
                     }
                     retryEnabled -> OutlinedButton(onClick = onRetry) {
                         Icon(
-                            imageVector = Icons.Filled.Replay,
+                            imageVector = Icons.Filled.Refresh,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )

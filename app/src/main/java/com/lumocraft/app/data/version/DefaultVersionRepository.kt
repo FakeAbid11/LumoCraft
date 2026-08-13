@@ -34,10 +34,10 @@ class DefaultVersionRepository(
         manifestService.fetchManifest()
 
     override fun install(version: MinecraftVersion): Flow<InstallProgress> =
-        pipeline(version) { progress -> installer.install(version) { emit(progress) } }
+        pipeline(version) { onProgress -> installer.install(version, onProgress) }
 
     override fun repair(version: MinecraftVersion): Flow<InstallProgress> =
-        pipeline(version) { progress -> installer.repair(version) { emit(progress) } }
+        pipeline(version) { onProgress -> installer.repair(version, onProgress) }
 
     private fun pipeline(
         version: MinecraftVersion,

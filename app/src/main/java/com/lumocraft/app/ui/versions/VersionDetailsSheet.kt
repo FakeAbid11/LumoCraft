@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -182,15 +183,14 @@ private fun InstallProgressSection(progress: InstallProgress) {
                 progress = { percentage / 100f },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp),
-                shape = RoundedCornerShape(3.dp)
+                    .height(6.dp)
             )
         } else {
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp),
-                shape = RoundedCornerShape(3.dp)
+                    .height(6.dp)
+            )
             )
         }
         Row(
