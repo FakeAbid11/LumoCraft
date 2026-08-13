@@ -19,19 +19,33 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lumocraft.app.core.theme.LumoCraftTheme
 import com.lumocraft.app.data.preferences.AppThemePreference
+import com.lumocraft.app.data.preferences.OnboardingPreference
 import com.lumocraft.app.domain.model.ThemeMode
 import com.lumocraft.app.navigation.AppNavHost
 import com.lumocraft.app.navigation.LumoDestination
 import com.lumocraft.app.ui.components.LumoNavigationBar
+import com.lumocraft.app.ui.onboarding.OnboardingScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LumoCraftApp() {
     val context = LocalContext.current
     val themePreference = remember { AppThemePreference(context) }
+    val onboardingPreference = remember { OnboardingPreference(context) }
     var themeMode by rememberSaveable { mutableStateOf(themePreference.loadThemeMode()) }
+    var onboardingComplete by rememberSaveable { mutableStateOf(onboardingPreference.isComplete()) }
 
     LumoCraftTheme(themeMode = themeMode) {
+        if (!onboardingComplete) {
+            OnboardingScreen(
+                onFinished = {
+                    onboardingComplete = true
+                    onboardingPreference.markComplete()
+                }
+            )
+            return@LumoCraftTheme
+        }
+
         val navController = rememberNavController()
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = LumoDestination.fromRoute(backStackEntry?.destination?.route)

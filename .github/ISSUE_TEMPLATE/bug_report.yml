@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a problem with LumoCraft
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: LumoCraft version
+      description: Shown in Settings → About, e.g. 0.1.0-rc1 (Build 1)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: e.g. Redmi Note 12, Android 13 (arm64)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Accounts
+        - Versions install
+        - Java runtime
+        - Launch
+        - Loaders (Fabric)
+        - Input / controls
+        - Performance
+        - Diagnostics / export
+        - Update check
+        - Onboarding
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Export logs from Settings → Diagnostics and paste the relevant part. Remove anything sensitive.

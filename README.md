@@ -4,28 +4,31 @@ LumoCraft is an original Android launcher for Minecraft: Java Edition — a
 lightweight, from-scratch launcher aimed at low-end devices, supporting local
 offline profiles. It is **not** a fork or clone of PojavLauncher.
 
-## Status: Phase 9 — Performance Engine & Smart Optimization
+## Status: Phase 11 — Release Candidate `v0.1.0-rc1`
 
-Phase 9 turns the launcher into a self-tuning engine: a launch cache and
-selective verification replace the full per-launch scans, JVM settings are
-chosen from a detected device profile (Auto = device-derived, or a manual
-Battery Saver / Balanced / Performance override), every launch is measured
-and kept in history, downloads resume partial files and adapt their
-concurrency to the measured bandwidth, and a byte-buffer pool limits
-allocations on hot paths. A Performance dashboard (Settings → Performance)
-shows the device profile, JVM profile selection, launch history, cache
-stats and cache/performance reset actions.
+Phase 11 ships the first release candidate. It adds everything a public
+release needs on top of the performance engine: a crash reporter that
+persists uncaught exceptions under the launcher log area, a **Diagnostics**
+screen (Settings → Diagnostics) that exports session logs and a full
+hardware/software snapshot as a shareable ZIP, an **About** section with a
+manual update check against the GitHub release channel, a **first-launch
+onboarding wizard**, and a **GitHub Actions release workflow** that builds,
+signs and publishes release APKs with SHA-256 checksums.
 
 | Area | Current | Later |
 |---|---|---|
-| UI | Compose Home / Accounts / Versions / Settings screens; full-screen Launch console; **Performance dashboard** | Touch controls, renderer overlay |
+| UI | Compose Home / Accounts / Versions / Settings screens; full-screen Launch console; Performance dashboard; **Diagnostics screen**; **first-launch onboarding**; **About + update check** | Touch controls, renderer overlay |
 | Accounts | Offline accounts: create/select/rename/delete, deterministic pixel avatars | Microsoft sign-in |
 | Versions | Manifest browser + filters + search, full vanilla install, install-state tracking, live progress, repair | Fabric/Forge |
 | Runtime | Java runtime manager: install/verify/repair/remove, arch detection, RAM sliders, JVM args, cached verification | Runtime selection UI |
-| Settings | Theme, Java runtime section, Renderer section (profile, resolution, FPS, VSync, native status), **Performance dashboard entry** | Java args, download options, storage picker |
+| Settings | Theme, Java runtime section, Renderer section (profile, resolution, FPS, VSync, native status), Performance dashboard entry, **Diagnostics entry**, **About section** | Java args, download options, storage picker |
 | Native | **NativeRuntimeManager**: per-arch LWJGL extraction (stamps/cache, dedup), verification, JNI env (`java.library.path`, `org.lwjgl.librarypath`), arch-mismatch rejection | Renderer glue (GLFW stub) |
 | Performance | **Launch cache + smart verification** (fingerprint-gated, hash-free repeats), **device profiling** (RAM/cores/tier), **smart JVM profiles** (auto or manual, heap-clamped), **launch profiler** (history on disk), **memory pool**, **adaptive + resumable downloads**, **Performance dashboard** | Sodium, shader-aware settings |
-| Launching | Launch pipeline: validation, client jar fetch, classpath + JVM/game args, native preparation, process spawn, log streaming, crash analysis | Renderer glue, Microsoft auth |
+| Loader | **Fabric loader**: install/repair/remove via generic `LoaderRepository` abstraction, loader-aware classpath + args | Forge, Quilt |
+| Input | **Input framework**: profiles, sensitivity/invert-Y, virtual mouse, control layout editor + preview, controller + hardware keyboard detection | Renderer-bound overlays |
+| Reliability | **Crash reporter** (uncaught-exception files), **log/diagnostics export** (redacted ZIP via share sheet or Downloads), session logs + FileProvider | Automatic crash upload |
+| Updates | **Manual update check** against GitHub releases (read-only — never auto-downloads) | In-app auto-update |
+| Release | **Release workflow**: signed release APK + SHA-256 published to GitHub Releases from tags | Play store, MSIX |
 
 ## Tech stack
 
@@ -55,18 +58,24 @@ timestamps).
 
 ```
 LumoCraft/
-├── .github/workflows/build.yml   # CI: builds and uploads the debug APK
+├── .github/
+│   ├── ISSUE_TEMPLATE/           # bug report + feature request templates
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── workflows/
+│       ├── build.yml             # CI: builds and uploads the debug APK
+│       └── release.yml           # publishes signed release APK on tags
 ├── app/
 │   ├── build.gradle.kts
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── java/com/lumocraft/app/
 │       │   ├── MainActivity.kt           # single activity, Compose entry
-│       │   ├── LumoCraftApp.kt           # root composable: theme + nav scaffold
+│       │   ├── LumoCraftApp.kt           # root composable: theme + nav scaffold + onboarding gate
 │       │   ├── LumoCraftApplication.kt   # manual DI: app-wide repositories
 │       │   ├── core/
 │       │   │   ├── config/               # AppConfig: endpoints, timeouts, installer version
-│       │   │   └── theme/                # Material 3 theme + brand colors
+│       │   │   ├── theme/                # Material 3 theme + brand colors
+│       │   │   └── version/              # VersionManager: SemVer parsing/comparison
 │       │   ├── domain/
 │       │   │   ├── account/              # OfflineAccount, AccountRepository, validator
 │       │   │   ├── avatar/               # deterministic pixel avatar generator
@@ -76,16 +85,19 @@ LumoCraft/
 │       │   │   │                         #   LaunchFailure/LaunchErrorType, OfflineUuid
 │       │   │   ├── native/               # NativeRuntimeManager, NativeStatus/NativeReport,
 │       │   │   │                         #   RendererProfile (presets + resolution), InputCompat
-│       │   │   │   ├── performance/          # DeviceProfile/Tier, JvmProfile, CacheManager,
-│       │   │   │   │                         #   SmartVerifier, LaunchProfiler, MemoryOptimizer,
-│       │   │   │   │                         #   PerformanceManager
+│       │   │   ├── loader/               # LoaderType, LoaderMetadata, LoaderInstance,
+│       │   │   │                         #   LoaderRepository, LoaderLaunchConfigurator
+│       │   │   ├── performance/          # DeviceProfile/Tier, JvmProfile, CacheManager,
+│       │   │   │                         #   SmartVerifier, LaunchProfiler, MemoryOptimizer,
+│       │   │   │                         #   PerformanceManager
+│       │   │   ├── update/               # UpdateRepository, UpdateStatus, ReleaseInfo
 │       │   │   └── model/                # ThemeMode
 │       │   ├── data/
 │       │   │   ├── account/              # SharedPreferences account repository
 │       │   │   ├── network/              # HttpClient, Downloader (retry + progress + resume),
 │       │   │   │                         #   HashUtils, ThroughputTracker, DownloadScheduler
 │       │   │   ├── storage/              # StorageManager: .minecraft layout + metadata
-│       │   │   ├── preferences/          # theme, version + renderer profile stores
+│       │   │   ├── preferences/          # theme, version, renderer, onboarding stores
 │       │   │   ├── runtime/              # RuntimeInstaller, ArchiveExtractor, RuntimeVerifier,
 │       │   │   │                         #   DefaultRuntimeRepository
 │       │   │   ├── version/              # ManifestService, VersionInstaller, LibraryInstaller,
@@ -99,14 +111,21 @@ LumoCraft/
 │       │   │   │                         #   ClientJarManager, LaunchValidator, JavaLauncher,
 │       │   │   │                         #   CrashAnalyzer, LauncherLogRepository,
 │       │   │   │                         #   DefaultLaunchPipeline
-│       │   │   └── native/               # NativeLibraryManager, NativeExtractionService
-│       │   │                             #   (stamps/cache), NativeVerificationService,
-│       │   │                             #   DefaultNativeRuntimeManager
+│       │   │   ├── loader/               # FabricMetadataService, FabricInstaller,
+│       │   │   │                         #   FabricLaunchConfigurator, DefaultLoaderRepository
+│       │   │   ├── native/               # NativeLibraryManager, NativeExtractionService
+│       │   │   │                         #   (stamps/cache), NativeVerificationService,
+│       │   │   │                         #   DefaultNativeRuntimeManager
+│       │   │   ├── export/               # CrashLogHandler (uncaught-exception writer),
+│       │   │   │                         #   CrashReportExporter (ZIP + Downloads + FileProvider)
+│       │   │   └── update/               # GithubUpdateRepository (release-channel checks)
 │       │   ├── navigation/               # LumoDestination enum + AppNavHost (+ launch route)
 │       │   └── ui/
 │       │       ├── components/           # Navigation bar, small shared widgets
-│       │       └── home|accounts|settings|versions|launch|performance/   # feature screens
-│       └── res/                          # strings, platform theme, adaptive icon
+│       │       └── home|accounts|settings|versions|launch|performance|diagnostics|onboarding/   # feature screens
+│       └── res/                          # strings, platform theme, adaptive icon, FileProvider paths
+├── docs/
+│   └── testing-checklist.md             # manual test matrix for each release
 ├── gradle/
 │   ├── libs.versions.toml               # version catalog
 │   └── wrapper/                         # Gradle 8.13 wrapper
@@ -237,6 +256,31 @@ LumoCraft/
 - **Runtime cache.** `RuntimeCache` skips re-verifying an unchanged
   runtime within a 5-minute window (id + path + release checksum), so
   repeated readiness checks and launches avoid rescanning.
+- **Semantic versions.** `VersionManager` parses, compares and displays
+  SemVer 2.0.0 values (`0.1.0-rc1`), used by the update checker and the
+  About screen.
+- **Update checks.** `UpdateRepository` is a read-only contract; the
+  GitHub-backed implementation fetches the `releases/latest` payload,
+  extracts the newest version + APK link and compares with
+  `VersionManager`. Checks are manual and never download anything.
+- **Crash reporting.** `CrashLogHandler` is registered as the default
+  uncaught-exception handler; it appends a timestamped crash file under
+  `<launcherRoot>/logs/crashes/` (never throwing itself) and delegates to
+  the previous handler, so the process behaves exactly as before.
+- **Diagnostics export.** `CrashReportExporter` packages session logs,
+  crash files and (optionally) a machine-readable diagnostics JSON
+  (app/hardware/launch facts) into a ZIP. Personal data is handled
+  defensively: usernames are redacted line-by-line before export. On
+  Android 10+ the archive lands in public `Downloads/LumoCraft/` via
+  `MediaStore`; on Android 8/9 it is written to app-specific storage and
+  shared through the `*.exports` FileProvider authority.
+- **Onboarding.** A five-page first-launch wizard is gated in
+  `LumoCraftApp`; completion is persisted in `OnboardingPreference` and
+  it can be skipped at any time (nothing is forced).
+- **Release signing.** `app/build.gradle.kts` reads keystore paths and
+  passwords from environment variables; when they are absent (local dev
+  or fork builds) the release APK falls back to the debug keystore so
+  builds never break.
 
 ## Building locally
 
@@ -259,6 +303,8 @@ For most work, push to GitHub and let CI build — see below.
 
 ## CI (GitHub Actions)
 
+### Debug builds
+
 `.github/workflows/build.yml` runs on every push and pull request:
 
 1. Checks out the repository
@@ -269,20 +315,23 @@ For most work, push to GitHub and let CI build — see below.
    project does not compile
 6. Uploads `app-debug.apk` as a downloadable artifact (`lumocraft-debug-apk`)
 
-### Pushing to GitHub
+### Releases
 
-The repository already contains a local `main` branch (no commits yet —
-create the initial commit first):
+`.github/workflows/release.yml` publishes signed release APKs. It runs on
+pushed tags matching `v*` (e.g. `v0.1.0-rc1`) or manually from the Actions
+tab (manual runs derive the tag from `versionName` in `app/build.gradle.kts`):
 
-```
-git add .
-git commit -m "Phase 5: Android Java Runtime Manager"
-git remote add origin https://github.com/<your-username>/LumoCraft.git
-git push -u origin main
-```
-
-(The remote URL must be a repository you created on GitHub. A private repo is
-fine for development.)
+1. Resolves the release tag
+2. Restores the signing keystore from the `ANDROID_KEYSTORE_BASE64` secret
+   (plus `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`,
+   `ANDROID_STORE_PASSWORD`) — without secrets the APK is built with the
+   debug key so the workflow still succeeds
+3. Runs `./gradlew assembleRelease --no-daemon`
+4. Computes `app-release.apk.sha256`
+5. Uploads the APK + checksum as a workflow artifact
+6. Creates a GitHub release with the APK + checksum attached; releases
+   whose tag contains `-rc`/`-beta`/`-alpha`/`-snapshot`/`-preview` are
+   marked as pre-releases
 
 ### Downloading the APK from GitHub Actions
 
@@ -319,6 +368,15 @@ Completed:
   with automatic JVM profile selection (manual override supported),
   launch history dashboard, adaptive + resumable downloads, memory pool,
   runtime verification cache, structured performance logging
+- **Fabric loader support** — generic `LoaderRepository` abstraction with
+  Fabric metadata + installer, repair/removal, loader-aware classpath and
+  JVM/game arguments, launch configuration logging
+- **Input framework** — profiles with sensitivity/invert-Y, virtual mouse,
+  control layout editor + preview, controller and hardware keyboard
+  detection, input logging
+- **Release Candidate `v0.1.0-rc1`** — crash reporter, Diagnostics screen
+  with redacted log/diagnostics export, About + manual update check,
+  first-launch onboarding, signed release APK via the release workflow
 
 Next phases, in order:
 
@@ -327,5 +385,5 @@ Next phases, in order:
 2. **Settings expansion** — game memory slider, download options, storage
    location picker
 3. **Storage management** — per-directory size display and cleanup
-4. Later phases: Microsoft auth, Fabric/Forge, mods, resource packs, touch
+4. Later phases: Microsoft auth, Forge, mods, resource packs, touch
    controls, shaders

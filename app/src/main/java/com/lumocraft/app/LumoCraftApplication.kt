@@ -2,6 +2,8 @@ package com.lumocraft.app
 
 import android.app.Application
 import com.lumocraft.app.data.account.SharedPreferencesAccountRepository
+import com.lumocraft.app.data.export.CrashLogHandler
+import com.lumocraft.app.data.export.CrashReportExporter
 import com.lumocraft.app.data.input.AndroidControllerManager
 import com.lumocraft.app.data.input.AndroidKeyboardManager
 import com.lumocraft.app.data.input.AndroidTouchEventMapper
@@ -43,11 +45,13 @@ import com.lumocraft.app.data.performance.PerformancePreference
 import com.lumocraft.app.data.performance.RuntimeCache
 import com.lumocraft.app.data.performance.SmartVerifierImpl
 import com.lumocraft.app.data.preferences.RendererPreference
+import com.lumocraft.app.data.preferences.VersionPreference
 import com.lumocraft.app.data.runtime.ArchiveExtractor
 import com.lumocraft.app.data.runtime.DefaultRuntimeRepository
 import com.lumocraft.app.data.runtime.RuntimeInstaller
 import com.lumocraft.app.data.runtime.RuntimeVerifier
 import com.lumocraft.app.data.storage.StorageManager
+import com.lumocraft.app.data.update.GithubUpdateRepository
 import com.lumocraft.app.data.version.AssetInstaller
 import com.lumocraft.app.data.version.DefaultVersionRepository
 import com.lumocraft.app.data.version.LibraryInstaller
@@ -65,6 +69,7 @@ import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.performance.MemoryOptimizer
 import com.lumocraft.app.domain.performance.PerformanceManager
 import com.lumocraft.app.domain.runtime.RuntimeRepository
+import com.lumocraft.app.domain.update.UpdateRepository
 import com.lumocraft.app.domain.version.VersionRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +85,11 @@ class LumoCraftApplication : Application() {
 
     val accountRepository: AccountRepository by lazy {
         SharedPreferencesAccountRepository(this)
+    }
+
+    /** Persists which installed version the Home screen launches. */
+    val versionPreference: VersionPreference by lazy {
+        VersionPreference(this)
     }
 
     val storageManager: StorageManager by lazy {
@@ -206,6 +216,25 @@ class LumoCraftApplication : Application() {
         LauncherLogRepository(storageManager)
     }
 
+    /** Release-channel update checks (GitHub releases). */
+    val updateRepository: UpdateRepository by lazy {
+        GithubUpdateRepository(HttpClient())
+    }
+
+    /** Packages logs + diagnostics into a shareable ZIP. */
+    val crashReportExporter: CrashReportExporter by lazy {
+        CrashReportExporter(
+            context = this,
+            storage = storageManager,
+            logs = launcherLogRepository,
+            performance = performanceManager,
+            runtimeRepository = runtimeRepository,
+            versionPreference = versionPreference,
+            loaderRepository = loaderRepository,
+            nativeRuntimeManager = nativeRuntimeManager
+        )
+    }
+
     val nativeRuntimeManager: NativeRuntimeManager by lazy {
         val storage = storageManager
         DefaultNativeRuntimeManager(
@@ -272,6 +301,12 @@ class LumoCraftApplication : Application() {
         super.onCreate()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         scope.launch { inputManager.initialize() }
+
+        // Capture uncaught crashes into the launcher log area for later
+        // export, then hand off to the platform handler as usual.
+        Thread.setDefaultUncaughtExceptionHandler(
+            CrashLogHandler(storageManager, Thread.getDefaultUncaughtExceptionHandler())
+        )
     }
 
     /**

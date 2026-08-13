@@ -2,7 +2,6 @@ package com.lumocraft.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +19,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -30,7 +28,9 @@ import com.lumocraft.app.ui.input.InputSettingsSection
 
 /**
  * Settings section. Appearance, Java runtime and renderer settings are
- * live; the input section adds profiles, sensitivity and control layout.
+ * live; the input section adds profiles, sensitivity and control layout;
+ * the launcher section links to Diagnostics and the About section offers
+ * a manual update check.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,8 +39,9 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onEditLayout: () -> Unit,
     onPreviewControls: () -> Unit,
-    onOpenPerformance: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onOpenPerformance: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -65,8 +66,9 @@ fun SettingsScreen(
             onPreviewControls = onPreviewControls
         )
         SettingsSection(title = stringResource(R.string.settings_section_launcher)) {
-            ComingSoonRow(label = stringResource(R.string.settings_launcher_directory))
+            DiagnosticsEntryRow(onOpenDiagnostics)
         }
+        AboutSection()
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
@@ -159,26 +161,19 @@ private fun ThemeSettingRow(
 }
 
 @Composable
-private fun ComingSoonRow(
-    label: String,
+private fun DiagnosticsEntryRow(
+    onOpenDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    OutlinedButton(
+        onClick = onOpenDiagnostics,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = stringResource(R.string.settings_coming_soon),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = stringResource(R.string.settings_open_diagnostics),
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }

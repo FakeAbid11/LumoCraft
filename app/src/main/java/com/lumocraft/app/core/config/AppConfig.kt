@@ -46,6 +46,13 @@ object AppConfig {
     /** Base URL for Java runtime archives (placeholder; swap for a real mirror). */
     const val RUNTIME_BASE_URL = "https://api.adoptium.net/v3/binary/latest/"
 
+    /** Update channel: GitHub releases for this project. */
+    const val GITHUB_OWNER = "FakeAbid11"
+    const val GITHUB_REPO = "LumoCraft"
+    const val GITHUB_RELEASES_LATEST_URL =
+        "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
+    const val GITHUB_RELEASES_PAGE_URL = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases"
+
     /** Performance engine storage, under the launcher root. */
     const val CACHE_DIRECTORY_NAME = "cache"
     const val LAUNCH_CACHE_FILE = "launch_cache.json"

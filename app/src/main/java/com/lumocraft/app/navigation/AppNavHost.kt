@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.lumocraft.app.domain.model.ThemeMode
 import com.lumocraft.app.ui.accounts.AccountsScreen
+import com.lumocraft.app.ui.diagnostics.DiagnosticsScreen
 import com.lumocraft.app.ui.home.HomeScreen
 import com.lumocraft.app.ui.input.ControlsPreviewScreen
 import com.lumocraft.app.ui.input.LayoutEditorScreen
@@ -57,11 +58,17 @@ fun AppNavHost(
                 onThemeModeChange = onThemeModeChange,
                 onEditLayout = { navController.navigate(INPUT_LAYOUT_ROUTE) },
                 onPreviewControls = { navController.navigate(INPUT_PREVIEW_ROUTE) },
-                onOpenPerformance = { navController.navigate(PERFORMANCE_ROUTE) }
+                onOpenPerformance = { navController.navigate(PERFORMANCE_ROUTE) },
+                onOpenDiagnostics = { navController.navigate(DIAGNOSTICS_ROUTE) }
             )
         }
         composable(PERFORMANCE_ROUTE) {
             PerformanceDashboardScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(DIAGNOSTICS_ROUTE) {
+            DiagnosticsScreen(
                 onBack = { navController.popBackStack() }
             )
         }
@@ -86,4 +93,5 @@ private const val LAUNCH_ROUTE = "launch"
 private const val INPUT_PREVIEW_ROUTE = "input/preview"
 private const val INPUT_LAYOUT_ROUTE = "input/layout"
 private const val PERFORMANCE_ROUTE = "performance"
+private const val DIAGNOSTICS_ROUTE = "diagnostics"
 private const val LOADERS_ROUTE = "loaders"
