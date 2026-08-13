@@ -41,7 +41,7 @@ class DefaultVersionRepository(
 
     override suspend fun remove(versionId: String): Result<Unit> {
         val removed = storage.removeVersionDirectory(versionId)
-        installer.onFilesChanged?.invoke(versionId)
+        runCatching { installer.onFilesChanged?.invoke(versionId) }
         _installedStates.value = storage.readInstallStates()
         return if (removed) {
             Result.success(Unit)
@@ -65,9 +65,20 @@ class DefaultVersionRepository(
                     )
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emit(
+                InstallProgress(
+                    versionId = version.id,
+                    stage = InstallStage.COMPLETE,
+                    error = e.message
+                )
+            )
         } finally {
             // Re-sync with disk (may be PENDING/FAILED/CORRUPTED after the run).
-            _installedStates.value = storage.readInstallStates()
+            runCatching { storage.readInstallStates() }
+                .onSuccess { _installedStates.value = it }
         }
     }
 }

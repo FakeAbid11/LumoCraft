@@ -50,7 +50,7 @@ class VerificationService(private val storage: StorageManager) {
             val file = storage.libraryFile(lib.path)
             when {
                 !file.isFile -> missingLibraries += lib
-                lib.sha1 != null && HashUtils.sha1(file) != lib.sha1 -> corruptLibraries += lib
+                lib.sha1 != null && runCatching { HashUtils.sha1(file) }.getOrNull() != lib.sha1 -> corruptLibraries += lib
                 lib.size != null && file.length() != lib.size -> corruptLibraries += lib
             }
         }
@@ -86,7 +86,7 @@ class VerificationService(private val storage: StorageManager) {
         val loggingConfigOk = loggingRef?.let { ref ->
             val file = storage.loggingConfigFile(versionId, ref.id)
             file.isFile &&
-                (ref.sha1 == null || HashUtils.sha1(file) == ref.sha1) &&
+                (ref.sha1 == null || runCatching { HashUtils.sha1(file) }.getOrNull() == ref.sha1) &&
                 (ref.size == null || file.length() == ref.size)
         } ?: true
 

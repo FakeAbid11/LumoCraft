@@ -75,7 +75,7 @@ class FabricInstaller(
 
         val instanceId = profile.instanceId
         val metadata = pending.copy(instanceId = instanceId)
-        storage.writeMetadata(metadata.versionMetadata())
+        runCatching { storage.writeMetadata(metadata.versionMetadata()) }
 
         val jsonResult = writeProfileJson(profile, onProgress)
         if (jsonResult.isFailure) {
@@ -89,9 +89,9 @@ class FabricInstaller(
 
         val verified = verify(instanceId, metadata, onProgress)
             ?: return@withContext Result.failure(IOException("Verification failed"))
-        storage.writeMetadata(verified.versionMetadata())
-        storage.writeLoaderMetadata(verified)
-        onFilesChanged?.invoke(instanceId)
+        runCatching { storage.writeMetadata(verified.versionMetadata()) }
+        runCatching { storage.writeLoaderMetadata(verified) }
+        runCatching { onFilesChanged?.invoke(instanceId) }
         onProgress(LoaderInstallProgress(instanceId, LoaderInstallStage.COMPLETE, 1f, 0, 0, 0, 0))
         Result.success(verified)
     }
@@ -110,9 +110,9 @@ class FabricInstaller(
         val report = verificationService.scan(instanceId)
         if (report.ok) {
             val restored = existing.copy(state = InstallState.INSTALLED)
-            storage.writeLoaderMetadata(restored)
-            storage.writeMetadata(restored.versionMetadata())
-            onFilesChanged?.invoke(instanceId)
+            runCatching { storage.writeLoaderMetadata(restored) }
+            runCatching { storage.writeMetadata(restored.versionMetadata()) }
+            runCatching { onFilesChanged?.invoke(instanceId) }
             onProgress(LoaderInstallProgress(instanceId, LoaderInstallStage.COMPLETE, 1f, 0, 0, 0, 0))
             return@withContext Result.success(restored)
         }
@@ -143,8 +143,8 @@ class FabricInstaller(
 
         val verified = verify(instanceId, existing, onProgress)
             ?: return@withContext Result.failure(IOException("Verification failed"))
-        storage.writeLoaderMetadata(verified)
-        onFilesChanged?.invoke(instanceId)
+        runCatching { storage.writeLoaderMetadata(verified) }
+        runCatching { onFilesChanged?.invoke(instanceId) }
         onProgress(LoaderInstallProgress(instanceId, LoaderInstallStage.COMPLETE, 1f, 0, 0, 0, 0))
         Result.success(verified)
     }
@@ -294,8 +294,8 @@ class FabricInstaller(
         listener(LoaderInstallStage.VERIFICATION, onProgress)(null, 0, 0, 0, 0)
         val report = verificationService.scan(instanceId)
         if (!report.ok) {
-            storage.writeLoaderMetadata(metadata.copy(state = InstallState.CORRUPTED))
-            onFilesChanged?.invoke(instanceId)
+            runCatching { storage.writeLoaderMetadata(metadata.copy(state = InstallState.CORRUPTED)) }
+            runCatching { onFilesChanged?.invoke(instanceId) }
             onProgress(
                 LoaderInstallProgress(
                     instanceId = instanceId,
@@ -317,7 +317,7 @@ class FabricInstaller(
         message: String?,
     ): Result<LoaderMetadata> {
         if (metadata.instanceId.isNotEmpty()) {
-            storage.writeLoaderMetadata(metadata.copy(state = InstallState.FAILED))
+            runCatching { storage.writeLoaderMetadata(metadata.copy(state = InstallState.FAILED)) }
         }
         return Result.failure(IOException(message ?: "Fabric installation failed"))
     }

@@ -73,7 +73,7 @@ class DefaultLoaderRepository(
             ?: return Result.failure(IOException("Loader instance '$instanceId' not found"))
         storage.removeVersionDirectory(instanceId)
         storage.removeLoaderMetadata(type, instanceId)
-        onFilesChanged?.invoke(instanceId)
+        runCatching { onFilesChanged?.invoke(instanceId) }
         refresh()
         return Result.success(Unit)
     }
@@ -106,8 +106,18 @@ class DefaultLoaderRepository(
                     )
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emit(
+                LoaderInstallProgress(
+                    instanceId = "",
+                    stage = LoaderInstallStage.COMPLETE,
+                    error = e.message
+                )
+            )
         } finally {
-            refresh()
+            runCatching { refresh() }
         }
     }
 

@@ -54,7 +54,7 @@ class AssetInstaller(
             }
             val destination = storage.assetIndexFile(ref.id)
             val alreadyValid = destination.isFile &&
-                (ref.sha1 == null || HashUtils.sha1(destination) == ref.sha1)
+                (ref.sha1 == null || runCatching { HashUtils.sha1(destination) }.getOrNull() == ref.sha1)
             val tracker = DownloadTracker(1, ref.size ?: 0L, onProgress)
             if (!alreadyValid) {
                 var lastFraction = 0f

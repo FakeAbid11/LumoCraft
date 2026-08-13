@@ -67,7 +67,7 @@ class VersionInstaller(
                 )
             storage.writeMetadata(verified)
             verificationListener(1f, report.totalLibraries + report.totalAssets, 0, 0, 0)
-            onFilesChanged?.invoke(id)
+            runCatching { onFilesChanged?.invoke(id) }
             onProgress(InstallProgress(id, InstallStage.COMPLETE, 1f, 0, 0, 0, 0))
             return@withContext Result.success(verified)
         }
@@ -99,7 +99,7 @@ class VersionInstaller(
             state = InstallState.PENDING
         )
         if (writePending) {
-            storage.writeMetadata(pending)
+            runCatching { storage.writeMetadata(pending) }
         }
         storage.prepareDirectories()
         listener(id, InstallStage.PREPARING, onProgress)(1f, 0, 0, 0, 0)
@@ -155,15 +155,15 @@ class VersionInstaller(
         verificationListener(null, 0, 0, 0, 0)
         val report = verificationService.scan(id)
         if (!report.ok) {
-            storage.writeMetadata(pending.copy(state = InstallState.CORRUPTED))
-            onFilesChanged?.invoke(id)
+            runCatching { storage.writeMetadata(pending.copy(state = InstallState.CORRUPTED)) }
+            runCatching { onFilesChanged?.invoke(id) }
             onProgress(InstallProgress(id, InstallStage.VERIFICATION, error = "Verification failed"))
             return@withContext Result.failure(IllegalStateException("Verification failed"))
         }
         val installed = pending.copy(state = InstallState.INSTALLED)
-        storage.writeMetadata(installed)
+        runCatching { storage.writeMetadata(installed) }
         verificationListener(1f, report.totalLibraries + report.totalAssets, 0, 0, 0)
-        onFilesChanged?.invoke(id)
+        runCatching { onFilesChanged?.invoke(id) }
         onProgress(InstallProgress(id, InstallStage.COMPLETE, 1f, 0, 0, 0, 0))
         Result.success(installed)
     }
@@ -176,7 +176,7 @@ class VersionInstaller(
         val id = version.id
         val destination = storage.versionJsonFile(id)
         if (!force && destination.isFile &&
-            (version.sha1 == null || HashUtils.sha1(destination) == version.sha1)
+            (version.sha1 == null || runCatching { HashUtils.sha1(destination) }.getOrNull() == version.sha1)
         ) {
             onProgress(InstallProgress(id, InstallStage.VERSION_JSON, 1f, 1, 0, 0, 0))
             return Result.success(destination)
@@ -217,7 +217,7 @@ class VersionInstaller(
         }
         val destination = storage.loggingConfigFile(id, ref.id)
         if (!force && destination.isFile &&
-            (ref.sha1 == null || HashUtils.sha1(destination) == ref.sha1)
+            (ref.sha1 == null || runCatching { HashUtils.sha1(destination) }.getOrNull() == ref.sha1)
         ) {
             onProgress(InstallProgress(id, InstallStage.LOGGING_CONFIG, 1f, 1, 0, 0, 0))
             return Result.success(Unit)
@@ -258,7 +258,7 @@ class VersionInstaller(
         pending: InstalledVersionMetadata,
         message: String?,
     ): Result<InstalledVersionMetadata> {
-        storage.writeMetadata(pending.copy(state = InstallState.FAILED))
+        runCatching { storage.writeMetadata(pending.copy(state = InstallState.FAILED)) }
         return Result.failure(IllegalStateException(message ?: "Installation failed"))
     }
 
