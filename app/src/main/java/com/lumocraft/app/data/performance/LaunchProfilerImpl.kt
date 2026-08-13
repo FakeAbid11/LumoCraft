@@ -41,10 +41,12 @@ class LaunchProfilerImpl(private val storage: StorageManager) : LaunchProfiler {
         }
     }
 
-    override suspend fun clear() = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            entries = null
-            file().delete()
+    override suspend fun clear() {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                entries = null
+                file().delete()
+            }
         }
     }
 

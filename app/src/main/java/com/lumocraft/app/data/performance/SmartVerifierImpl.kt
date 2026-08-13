@@ -56,7 +56,8 @@ class SmartVerifierImpl(
             val corrupt = mutableListOf<String>()
 
             val libraryPaths = buildList {
-                for (json in chain) {
+                for (id in chain) {
+                    val json = versionJson(id) ?: continue
                     for (lib in VersionJson.libraries(json)) {
                         if (lib.path !in this) add(lib.path)
                     }

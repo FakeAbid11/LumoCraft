@@ -43,7 +43,7 @@ class ClasspathBuilder(
                 LaunchException("Version JSON for '$versionId' is missing or unreadable")
             )
 
-        val fingerprint = Fingerprints.of(chain.map { storage.versionJsonFile(it) })
+        val fingerprint = Fingerprints.of(chain)
         cache?.let { c ->
             val entry = c.getEntry(versionId)
             if (entry?.classpath != null &&
@@ -65,7 +65,8 @@ class ClasspathBuilder(
 
         val ordered = linkedMapOf<String, File>()
         val refs = mutableListOf<LibraryRef>()
-        for (json in chain) {
+        for (file in chain) {
+            val json = JSONObject(file.readText())
             for (ref in VersionJson.libraries(json)) {
                 refs += ref
                 ordered.putIfAbsent(ref.path, storage.libraryFile(ref.path))
@@ -86,8 +87,9 @@ class ClasspathBuilder(
             )
         }
 
-        val mainClass = chain.firstNotNullOfOrNull { json ->
-            json.optString("mainClass").takeIf { it.isNotEmpty() }
+        val mainClass = chain.firstNotNullOfOrNull { file ->
+            runCatching { JSONObject(file.readText()) }.getOrNull()
+                ?.optString("mainClass")?.takeIf { it.isNotEmpty() }
         } ?: return@withContext Result.failure(
             LaunchException("No mainClass declared for '$versionId'")
         )
@@ -116,8 +118,8 @@ class ClasspathBuilder(
     }
 
     /** Leaf-first chain: the version itself, then each inherited parent. */
-    private fun loadChain(versionId: String): List<JSONObject>? {
-        val result = mutableListOf<JSONObject>()
+    private fun loadChain(versionId: String): List<File>? {
+        val result = mutableListOf<File>()
         var current = versionId
         val seen = mutableSetOf<String>()
         while (true) {
@@ -125,7 +127,7 @@ class ClasspathBuilder(
             val file = storage.versionJsonFile(current)
             if (!file.isFile) return null
             val json = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return null
-            result.add(json)
+            result.add(file)
             val parent = json.optString("inheritsFrom").takeIf { it.isNotEmpty() } ?: break
             current = parent
         }

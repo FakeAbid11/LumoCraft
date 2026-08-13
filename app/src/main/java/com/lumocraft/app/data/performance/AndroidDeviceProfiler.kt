@@ -30,7 +30,7 @@ class AndroidDeviceProfiler(context: Context) : DeviceProfiler {
             cpuCores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
             androidSdk = Build.VERSION.SDK_INT,
             androidRelease = Build.VERSION.RELEASE,
-            lowRamDevice = memoryInfo.isLowRamDevice
+            lowRamDevice = memoryInfo.totalMem / (1024 * 1024) < LOW_RAM_MB
         )
         detected = profile
         profile
@@ -43,5 +43,9 @@ class AndroidDeviceProfiler(context: Context) : DeviceProfiler {
             abi.contains("v7a") || abi.contains("armeabi") -> RuntimeArchitecture.ARMEABI_V7A
             else -> RuntimeArchitecture.X86_64
         }
+    }
+
+    private companion object {
+        const val LOW_RAM_MB = 2048L
     }
 }

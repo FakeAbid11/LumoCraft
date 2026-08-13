@@ -2,9 +2,11 @@ package com.lumocraft.app.data.network
 
 import com.lumocraft.app.core.config.AppConfig
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -80,7 +82,7 @@ class HttpClient(
                 destination.delete()
                 downloadTo(url, destination, 0, onProgress)
             } catch (e: HttpStatusException) {
-                if (e.code != HttpURLConnection.HTTP_NOT_SATISFIABLE) throw e
+                if (e.code != HTTP_NOT_SATISFIABLE) throw e
                 // Partial file is complete or longer than the remote file.
                 destination.delete()
                 downloadTo(url, destination, 0, onProgress)
@@ -93,7 +95,7 @@ class HttpClient(
         destination: File,
         resumeFrom: Long,
         onProgress: suspend (Float?) -> Unit,
-    ) {
+    ): File {
         val connection = openConnection(url, resumeFrom.takeIf { it > 0 })
         try {
             val code = connection.responseCode
@@ -103,7 +105,7 @@ class HttpClient(
             val total = connection.contentLengthLong.takeIf { it > 0 }
             val absoluteTotal = total?.plus(resumeFrom)
             connection.inputStream.use { input ->
-                destination.outputStream(append = resumeFrom > 0).use { output ->
+                FileOutputStream(destination, resumeFrom > 0).use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     var downloaded = resumeFrom
                     while (true) {
@@ -120,6 +122,7 @@ class HttpClient(
                     }
                 }
             }
+            destination
         } finally {
             connection.disconnect()
         }
@@ -148,5 +151,6 @@ class HttpClient(
 
     private companion object {
         const val DEFAULT_BUFFER_SIZE = 16 * 1024
+        const val HTTP_NOT_SATISFIABLE = 416
     }
 }
