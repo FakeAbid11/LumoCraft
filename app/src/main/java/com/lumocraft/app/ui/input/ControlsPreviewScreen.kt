@@ -126,11 +126,13 @@ private class GamepadInputView(
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
         if (controller?.handleKeyEvent(event) == true) return true
+        val isDown = event.action == KeyEvent.ACTION_DOWN
+        val isRepeat = isDown && event.repeatCount > 0
         manager.keyboard.onKeyEvent(
             keyCode = event.keyCode,
             scanCode = event.scanCode,
-            down = event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_REPEAT,
-            repeat = event.action == KeyEvent.ACTION_REPEAT
+            down = isDown,
+            repeat = isRepeat
         )
         return true
     }
