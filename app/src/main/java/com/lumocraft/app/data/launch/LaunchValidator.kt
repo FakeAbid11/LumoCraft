@@ -1,10 +1,13 @@
 package com.lumocraft.app.data.launch
 
+import com.lumocraft.app.data.native.NativeArchitecture
 import com.lumocraft.app.data.runtime.RuntimeVerifier
 import com.lumocraft.app.data.storage.StorageManager
 import com.lumocraft.app.data.version.VersionJson
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchValidationReport
+import com.lumocraft.app.domain.native.NativeRuntimeManager
+import com.lumocraft.app.domain.native.NativeStatus
 import com.lumocraft.app.domain.version.InstallState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -13,14 +16,15 @@ import org.json.JSONObject
 
 /**
  * Pre-launch validation: account, runtime binaries, installed version,
- * libraries, assets, client jar and main class. All checks are
- * existence/size based (no hashing), so both the Home readiness check
- * and the launch pipeline stay fast. The pipeline refuses to launch
- * when [LaunchValidationReport.ok] is false.
+ * libraries, assets, client jar, main class and native libraries. All
+ * checks are existence/size based (no hashing), so both the Home
+ * readiness check and the launch pipeline stay fast. The pipeline
+ * refuses to launch when [LaunchValidationReport.ok] is false.
  */
 class LaunchValidator(
     private val storage: StorageManager,
     private val runtimeVerifier: RuntimeVerifier,
+    private val nativeRuntimeManager: NativeRuntimeManager,
 ) {
 
     /** Full validation including the client jar; used by the pipeline. */
@@ -71,6 +75,13 @@ class LaunchValidator(
             ?: true
         val clientJarOk = !requireClientJar ||
             File(storage.versionDirectory(context.versionId), "${context.versionId}.jar").isFile
+        val nativeStatus = nativeRuntimeManager.statusOf(context.versionId)
+        val nativeOk = nativeStatus == NativeStatus.READY
+        val nativeDetail = if (nativeOk) {
+            null
+        } else {
+            "${NativeArchitecture.detect().abi} / $nativeStatus"
+        }
 
         LaunchValidationReport(
             accountOk = accountOk,
@@ -82,6 +93,8 @@ class LaunchValidator(
             clientJarOk = clientJarOk,
             assetIndexOk = assetIndexOk,
             loggingConfigOk = loggingConfigOk,
+            nativeOk = nativeOk,
+            nativeDetail = nativeDetail,
             missingLibraries = missingLibraries,
             missingAssets = missingAssets
         )

@@ -11,9 +11,14 @@ import com.lumocraft.app.data.launch.LaunchArgumentBuilder
 import com.lumocraft.app.data.launch.LaunchEnvironment
 import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.data.launch.LaunchValidator
-import com.lumocraft.app.data.launch.NativeExtractor
+import com.lumocraft.app.data.native.DefaultNativeRuntimeManager
+import com.lumocraft.app.data.native.NativeArchitecture
+import com.lumocraft.app.data.native.NativeExtractionService
+import com.lumocraft.app.data.native.NativeLibraryManager
+import com.lumocraft.app.data.native.NativeVerificationService
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.network.HttpClient
+import com.lumocraft.app.data.preferences.RendererPreference
 import com.lumocraft.app.data.runtime.ArchiveExtractor
 import com.lumocraft.app.data.runtime.DefaultRuntimeRepository
 import com.lumocraft.app.data.runtime.RuntimeInstaller
@@ -28,6 +33,7 @@ import com.lumocraft.app.data.version.VersionInstaller
 import com.lumocraft.app.domain.account.AccountRepository
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchPipeline
+import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.runtime.RuntimeRepository
 import com.lumocraft.app.domain.version.VersionRepository
 
@@ -79,8 +85,20 @@ class LumoCraftApplication : Application() {
         LauncherLogRepository(storageManager)
     }
 
+    val nativeRuntimeManager: NativeRuntimeManager by lazy {
+        val storage = storageManager
+        DefaultNativeRuntimeManager(
+            storage = storage,
+            libraryManager = NativeLibraryManager(storage),
+            extractionService = NativeExtractionService(storage),
+            verificationService = NativeVerificationService(storage),
+            rendererPreference = RendererPreference(this),
+            detectedArchitecture = NativeArchitecture.detect()
+        )
+    }
+
     val launchValidator: LaunchValidator by lazy {
-        LaunchValidator(storageManager, RuntimeVerifier())
+        LaunchValidator(storageManager, RuntimeVerifier(), nativeRuntimeManager)
     }
 
     val launchPipeline: LaunchPipeline by lazy {
@@ -92,7 +110,7 @@ class LumoCraftApplication : Application() {
             classpathBuilder = ClasspathBuilder(storage),
             argumentBuilder = LaunchArgumentBuilder(storage),
             clientJarManager = ClientJarManager(storage, downloader),
-            nativeExtractor = NativeExtractor(storage),
+            nativeRuntimeManager = nativeRuntimeManager,
             launcher = JavaLauncher(),
             crashAnalyzer = CrashAnalyzer(),
             logs = launcherLogRepository

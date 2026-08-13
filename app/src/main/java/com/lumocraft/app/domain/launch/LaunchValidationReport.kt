@@ -13,12 +13,14 @@ data class LaunchValidationReport(
     val clientJarOk: Boolean = false,
     val assetIndexOk: Boolean = true,
     val loggingConfigOk: Boolean = true,
+    val nativeOk: Boolean = true,
+    val nativeDetail: String? = null,
     val missingLibraries: List<String> = emptyList(),
     val missingAssets: Int = 0,
     val runtimeDetail: String? = null
 ) {
     val ok: Boolean get() =
         accountOk && runtimeOk && versionOk && mainClassOk &&
-            clientJarOk && assetIndexOk && loggingConfigOk &&
+            clientJarOk && assetIndexOk && loggingConfigOk && nativeOk &&
             missingLibraries.isEmpty() && missingAssets == 0
 }

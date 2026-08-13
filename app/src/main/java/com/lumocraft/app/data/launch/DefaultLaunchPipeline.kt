@@ -8,6 +8,9 @@ import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.launch.LaunchProgress
 import com.lumocraft.app.domain.launch.LaunchState
 import com.lumocraft.app.domain.launch.LaunchValidationReport
+import com.lumocraft.app.domain.native.NativeException
+import com.lumocraft.app.domain.native.NativeRuntimeManager
+import com.lumocraft.app.domain.native.NativeStatus
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,10 +23,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Reference [LaunchPipeline]: validates, prepares, classpaths, extracts
- * natives, builds arguments and runs the Java process while streaming
- * its output into the session log. Any terminal state leaves the session
- * log file on disk for the "Open logs" action.
+ * Reference [LaunchPipeline]: validates, prepares (including native
+ * libraries through [NativeRuntimeManager]), classpaths, builds
+ * arguments with the JNI environment and renderer profile injected,
+ * spawns the Java process and streams its output into the session log.
+ * Any terminal state leaves the session log file on disk for the
+ * "Open logs" action.
  */
 class DefaultLaunchPipeline(
     private val environment: LaunchEnvironment,
@@ -31,7 +36,7 @@ class DefaultLaunchPipeline(
     private val classpathBuilder: ClasspathBuilder,
     private val argumentBuilder: LaunchArgumentBuilder,
     private val clientJarManager: ClientJarManager,
-    private val nativeExtractor: NativeExtractor,
+    private val nativeRuntimeManager: NativeRuntimeManager,
     private val launcher: JavaLauncher,
     private val crashAnalyzer: CrashAnalyzer,
     private val logs: LauncherLogRepository,
@@ -68,9 +73,15 @@ class DefaultLaunchPipeline(
         var exitCode: Int? = null
         try {
             environment.prepare()
+            logs.logArchitecture(nativeRuntimeManager.architecture().abi)
 
             _state.value = LaunchProgress(LaunchState.PREPARING, "Fetching client jar")
             clientJarManager.ensure(context.versionId).getOrElse { throw it }
+
+            // Natives first: preparation self-heals corrupt extractions, so
+            // validation below sees the real state.
+            _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Preparing native libraries")
+            prepareNatives(context.versionId)
 
             _state.value = LaunchProgress(LaunchState.VALIDATING, "Validating installation")
             val report = validator.validate(context)
@@ -83,12 +94,23 @@ class DefaultLaunchPipeline(
                 "Classpath: ${built.libraryFiles.size} libraries, main class ${built.mainClass}"
             )
 
-            _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Extracting native libraries")
-            nativeExtractor.extract(context.versionId, built.libraryRefs).getOrElse { throw it }
-
             _state.value = LaunchProgress(LaunchState.BUILDING_ARGUMENTS, "Building launch arguments")
-            val args = argumentBuilder.build(context, built.classpath, environment)
-                .getOrElse { throw it }
+            val nativesDirectory = nativeRuntimeManager.nativeDirectory(context.versionId)
+            val jniEnvironment = nativeRuntimeManager.jniEnvironment(context.versionId)
+            val rendererProfile = nativeRuntimeManager.rendererProfile()
+            logs.logRendererSelection(rendererProfile)
+            logs.logJniPaths(jniEnvironment)
+            val resolution = rendererProfile.effectiveResolution()
+            logs.logResolution(resolution.width, resolution.height, rendererProfile.resolutionScale.percent)
+
+            val args = argumentBuilder.build(
+                context = context,
+                classpath = built.classpath,
+                environment = environment,
+                nativesDirectory = nativesDirectory,
+                jniEnvironment = jniEnvironment,
+                rendererProfile = rendererProfile
+            ).getOrElse { throw it }
 
             val javaHome = File(context.runtime.path)
             _state.value = LaunchProgress(LaunchState.STARTING_JAVA, "Starting Java")
@@ -119,7 +141,14 @@ class DefaultLaunchPipeline(
             writeLauncherLine("Launch cancelled")
             process?.cancel()
         } catch (error: Throwable) {
-            failure = LaunchFailure(LaunchErrorType.UNKNOWN, error.message)
+            failure = when (error) {
+                is LaunchException -> LaunchFailure(error.type, error.message)
+                is NativeException -> LaunchFailure(
+                    LaunchErrorType.NATIVE_LIBRARY_MISSING,
+                    error.message
+                )
+                else -> LaunchFailure(LaunchErrorType.UNKNOWN, error.message)
+            }
             writeLauncherLine("Launch failed: ${error.message}")
             process?.cancel()
         } finally {
@@ -129,6 +158,39 @@ class DefaultLaunchPipeline(
             }
             job = null
         }
+    }
+
+    /**
+     * Safety gate: natives must be extracted, verified and match the
+     * device architecture. Each failure maps to an actionable error.
+     */
+    private suspend fun prepareNatives(versionId: String) {
+        val report = nativeRuntimeManager.prepare(versionId).getOrElse { throw it }
+        when {
+            report.archMismatch -> throw LaunchException(
+                type = LaunchErrorType.NATIVE_ARCH_MISMATCH,
+                message = "Natives were extracted for ${report.arch.abi}, but this device " +
+                    "uses ${nativeRuntimeManager.architecture().abi}"
+            )
+            report.status == NativeStatus.CORRUPTED -> throw LaunchException(
+                type = LaunchErrorType.NATIVE_CORRUPTED,
+                message = "Native extraction is corrupted. Missing: " +
+                    "${report.missingFiles.joinToString(", ").take(200)}; " +
+                    "corrupt: ${report.corruptFiles.joinToString(", ").take(200)}"
+            )
+            report.status != NativeStatus.READY -> throw LaunchException(
+                type = LaunchErrorType.NATIVE_LIBRARY_MISSING,
+                message = "Native libraries are not ready for ${nativeRuntimeManager.architecture().abi}"
+            )
+        }
+        logs.logNativeExtraction(
+            versionId = versionId,
+            arch = report.arch.abi,
+            directory = report.nativeDirectory.absolutePath,
+            extracted = report.extractedFiles,
+            skippedJars = report.skippedJars,
+            duplicatesRemoved = report.duplicatesRemoved
+        )
     }
 
     private suspend fun writeLauncherLine(line: String) {
@@ -145,6 +207,7 @@ class DefaultLaunchPipeline(
             if (!report.clientJarOk) append(" client jar missing;")
             if (!report.assetIndexOk) append(" asset index missing;")
             if (!report.loggingConfigOk) append(" logging config missing;")
+            if (!report.nativeOk) append(" natives not ready (${report.nativeDetail});")
             if (report.missingLibraries.isNotEmpty()) {
                 append(
                     " libraries missing: ${report.missingLibraries.take(MAX_REPORTED_LIBS).joinToString(", ")}"

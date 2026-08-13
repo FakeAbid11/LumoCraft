@@ -7,6 +7,7 @@ import com.lumocraft.app.data.version.VersionJson
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchException
 import com.lumocraft.app.domain.launch.OfflineUuid
+import com.lumocraft.app.domain.native.RendererProfile
 import java.io.File
 import java.util.Locale
 import java.util.TimeZone
@@ -26,7 +27,10 @@ data class LaunchArguments(
  * every `${token}` placeholder against the [LaunchContext] and the
  * Android environment. New-format `arguments.*` arrays and legacy
  * `minecraftArguments` strings are both supported; the Android-specific
- * JVM flags mirror what the reference Android launchers pass.
+ * JVM flags mirror what the reference Android launchers pass. The JNI
+ * environment (java.library.path, org.lwjgl.librarypath), the renderer
+ * profile flags and the scaled resolution are injected on top without
+ * touching the caller-visible pipeline API.
  */
 class LaunchArgumentBuilder(private val storage: StorageManager) {
 
@@ -34,11 +38,13 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
         context: LaunchContext,
         classpath: String,
         environment: LaunchEnvironment,
+        nativesDirectory: File,
+        jniEnvironment: Map<String, String> = emptyMap(),
+        rendererProfile: RendererProfile? = null,
     ): Result<LaunchArguments> = withContext(Dispatchers.IO) {
         runCatching {
             val json = readVersionJson(context.versionId)
-            val nativesDirectory = environment.nativesDirectory(context.versionId)
-            val tokens = tokenMap(context, json, classpath, nativesDirectory)
+            val tokens = tokenMap(context, json, classpath, nativesDirectory, rendererProfile)
 
             val jvmArguments = buildList {
                 addAll(VersionJson.resolveArguments(json.optJSONObject("arguments")?.optJSONArray("jvm")))
@@ -48,7 +54,9 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { add(resolveTokens(it, tokens)) }
                 addAll(context.jvmConfiguration.buildArguments())
-                addAll(androidArguments(environment, context.versionId))
+                addAll(androidArguments(environment, nativesDirectory))
+                jniEnvironment.forEach { (key, value) -> add("-D$key=$value") }
+                rendererProfile?.let { addAll(rendererArguments(it)) }
             }.map { resolveTokens(it, tokens) }
 
             val gameArguments = buildList {
@@ -84,6 +92,7 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
         json: JSONObject,
         classpath: String,
         nativesDirectory: File,
+        rendererProfile: RendererProfile?,
     ): Map<String, String> {
         val assetIndexId = json.optJSONObject("assetIndex")?.optString("id")
             ?.takeIf { it.isNotEmpty() }
@@ -93,6 +102,9 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             ?.optJSONObject("file")
             ?.optString("id")
             .orEmpty()
+        val resolution = rendererProfile
+            ?.effectiveResolution()
+            ?: RendererProfile.DEFAULT_WINDOW
         return mapOf(
             "auth_player_name" to context.account.username,
             "auth_uuid" to OfflineUuid.forUsername(context.account.username),
@@ -112,8 +124,8 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             "launcher_version" to BuildConfig.VERSION_NAME,
             "classpath" to classpath,
             "path" to storage.loggingConfigFile(context.versionId, loggingId).absolutePath,
-            "resolution_width" to DEFAULT_RESOLUTION_WIDTH.toString(),
-            "resolution_height" to DEFAULT_RESOLUTION_HEIGHT.toString()
+            "resolution_width" to resolution.width.toString(),
+            "resolution_height" to resolution.height.toString()
         )
     }
 
@@ -152,11 +164,14 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
      * launcher's storage, so HOME/tmpdir/library paths are redirected and
      * LWJGL uses its system allocator instead of the jemalloc bindings.
      */
-    private fun androidArguments(environment: LaunchEnvironment, versionId: String): List<String> =
+    private fun androidArguments(
+        environment: LaunchEnvironment,
+        nativesDirectory: File,
+    ): List<String> =
         listOf(
             "-Duser.home=${environment.homeDirectory().absolutePath}",
             "-Djava.io.tmpdir=${environment.tempDirectory().absolutePath}",
-            "-Djna.boot.library.path=${environment.nativesDirectory(versionId).absolutePath}",
+            "-Djna.boot.library.path=${nativesDirectory.absolutePath}",
             "-Duser.language=${Locale.getDefault().language}",
             "-Dos.name=Linux",
             "-Dos.version=Android-${Build.VERSION.RELEASE}",
@@ -168,10 +183,22 @@ class LaunchArgumentBuilder(private val storage: StorageManager) {
             "-XX:ActiveProcessorCount=${Runtime.getRuntime().availableProcessors()}"
         )
 
+    /**
+     * Launcher-consumed renderer flags for the renderer glue (a later
+     * phase). Harmless to the vanilla JVM; they follow the process and
+     * let the glue configure the window without touching the launcher.
+     */
+    private fun rendererArguments(profile: RendererProfile): List<String> =
+        listOf(
+            "-Dlumocraft.renderer=${profile.renderer.name.lowercase()}",
+            "-Dlumocraft.resolutionScale=${profile.resolutionScale.percent}",
+            "-Dlumocraft.fpsLimit=${profile.fpsLimit ?: "unlimited"}",
+            "-Dlumocraft.vsync=${profile.vsync}",
+            "-Dlumocraft.mipmaps=${profile.mipmaps}"
+        )
+
     private companion object {
         const val LAUNCHER_NAME = "LumoCraft"
         const val ACCESS_TOKEN_PLACEHOLDER = "0"
-        const val DEFAULT_RESOLUTION_WIDTH = 854
-        const val DEFAULT_RESOLUTION_HEIGHT = 480
     }
 }

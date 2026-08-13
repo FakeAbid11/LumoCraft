@@ -1,6 +1,7 @@
 package com.lumocraft.app.data.launch
 
 import com.lumocraft.app.data.storage.StorageManager
+import com.lumocraft.app.domain.native.RendererProfile
 import java.io.BufferedWriter
 import java.io.File
 import java.text.SimpleDateFormat
@@ -55,6 +56,55 @@ class LauncherLogRepository(private val storage: StorageManager) {
         recent.addLast(line)
         while (recent.size > MAX_RECENT) recent.removeFirst()
         _lines.emit(line)
+    }
+
+    /** Writes a section header (e.g. "── Native libraries ──"). */
+    suspend fun writeSection(title: String) {
+        writeLine("── $title ──")
+    }
+
+    /** Logs the native extraction outcome. */
+    suspend fun logNativeExtraction(
+        versionId: String,
+        arch: String,
+        directory: String,
+        extracted: Int,
+        skippedJars: Int,
+        duplicatesRemoved: Int,
+    ) {
+        writeSection("Native libraries")
+        writeLine("version=$versionId arch=$arch directory=$directory")
+        writeLine("extracted=$extracted files, cached jars=$skippedJars, duplicates removed=$duplicatesRemoved")
+    }
+
+    /** Logs the renderer profile in use. */
+    suspend fun logRendererSelection(profile: RendererProfile) {
+        writeSection("Renderer")
+        writeLine(
+            "profile=${profile.renderer.name.lowercase()} " +
+                "resolutionScale=${profile.resolutionScale.percent}% " +
+                "fpsLimit=${profile.fpsLimit ?: "unlimited"} vsync=${profile.vsync} " +
+                "mipmaps=${profile.mipmaps}"
+        )
+    }
+
+    /** Logs the JNI paths injected into the Java process. */
+    suspend fun logJniPaths(paths: Map<String, String>) {
+        writeSection("JNI environment")
+        for ((key, value) in paths) {
+            writeLine("$key=$value")
+        }
+    }
+
+    /** Logs the device architecture. */
+    suspend fun logArchitecture(arch: String) {
+        writeLine("Architecture: $arch")
+    }
+
+    /** Logs the effective game resolution. */
+    suspend fun logResolution(width: Int, height: Int, scalePercent: Int) {
+        writeSection("Resolution")
+        writeLine("window=${width}x$height (scale $scalePercent%)")
     }
 
     /** Closes the session file; the file stays on disk. */

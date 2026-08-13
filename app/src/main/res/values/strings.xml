@@ -145,6 +145,24 @@
     <string name="runtime_min_ram">Minimum RAM: %1$d MB</string>
     <string name="runtime_recommended_ram">Recommended: %1$d MB</string>
 
+    <!-- Renderer -->
+    <string name="settings_section_renderer">Renderer</string>
+    <string name="renderer_profile">Profile</string>
+    <string name="renderer_profile_compatibility">Compatibility</string>
+    <string name="renderer_profile_performance">Performance</string>
+    <string name="renderer_profile_experimental">Experimental</string>
+    <string name="renderer_resolution">Resolution</string>
+    <string name="renderer_resolution_percent">%1$d%%</string>
+    <string name="renderer_fps_limit">FPS limit</string>
+    <string name="renderer_fps_value">%1$d</string>
+    <string name="renderer_fps_unlimited">Unlimited</string>
+    <string name="renderer_vsync">VSync</string>
+    <string name="renderer_native_status">Native status</string>
+    <string name="renderer_native_arch">Architecture: %1$s</string>
+    <string name="native_status_not_prepared">Not prepared</string>
+    <string name="native_status_ready">Ready</string>
+    <string name="native_status_corrupted">Corrupted</string>
+
     <!-- Launch -->
     <string name="launch_title">Launching %1$s</string>
     <string name="launch_title_unknown">Launch session</string>
@@ -170,6 +188,8 @@
     <string name="launch_error_client_jar">The client jar could not be obtained.</string>
     <string name="launch_error_main_class">The main class could not be loaded.</string>
     <string name="launch_error_native">A native library could not be loaded — this build needs the renderer glue to run the game.</string>
+    <string name="launch_error_native_arch">The game\'s native libraries were prepared for a different architecture. Clear the version\'s natives and launch again.</string>
+    <string name="launch_error_native_corrupted">The native extraction is corrupted. Launch again to re-extract it automatically.</string>
     <string name="launch_error_classpath">The classpath could not be resolved.</string>
     <string name="launch_error_jvm">The Java virtual machine failed to start.</string>
     <string name="launch_error_crashed">Minecraft crashed. Check the console and session log for details.</string>

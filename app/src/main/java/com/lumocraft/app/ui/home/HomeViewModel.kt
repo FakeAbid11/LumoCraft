@@ -85,6 +85,10 @@ class HomeViewModel(
                     runtime = runtime,
                     gameDirectory = application.storageManager.launcherRoot()
                 )
+            ).copy(
+                // Natives are prepared and self-healed by the pipeline at
+                // launch time, so they do not gate the Home screen.
+                nativeOk = true
             )
         }
         HomeUiState(

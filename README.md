@@ -4,22 +4,27 @@ LumoCraft is an original Android launcher for Minecraft: Java Edition — a
 lightweight, from-scratch launcher aimed at low-end devices, supporting local
 offline profiles. It is **not** a fork or clone of PojavLauncher.
 
-## Status: Phase 6 — Launch Pipeline
+## Status: Phase 7 — Android Renderer & Native Runtime Compatibility
 
-Phase 6 connects every existing system: the Home screen now validates launch
-readiness (account, runtime, version, libraries, assets), downloads the
-client jar on demand, builds the JVM + game arguments for vanilla Minecraft
-1.20.1, extracts native libraries, spawns `bin/java`, streams the session log
-to a live console and analyzes crashes.
+Phase 7 adds the native compatibility layer: LWJGL native libraries are
+located, extracted per-architecture (cached + incremental), verified and
+injected into the Java process via `java.library.path` and
+`org.lwjgl.librarypath`. A launcher-side renderer profile (Compatibility /
+Performance / Experimental presets, resolution scale 50/75/100%, FPS limit,
+VSync, mipmaps) is persisted and applied at launch, and the foundation for
+touch/virtual-mouse/keyboard/controller input is in place. The renderer glue
+itself (a GLFW stub that turns native rendering into Android surfaces) is a
+later phase.
 
 | Area | Current | Later |
 |---|---|---|
-| UI | Compose Home / Accounts / Versions / Settings screens (bottom navigation); full-screen Launch console (stages, live log, cancel/retry/open logs) | Touch controls, renderer overlay |
-| Accounts | Offline accounts: create/select/rename/delete, deterministic pixel avatars, SharedPreferences persistence | Microsoft sign-in |
-| Versions | Manifest browser (All/Release/Snapshot/Old Beta/Old Alpha filters + search), full vanilla install (version JSON, libraries, asset index, asset objects, logging config), install-state tracking, live progress, repair mode | Fabric/Forge |
-| Runtime | Java runtime manager: install (Java 17/21), verify, repair, remove, architecture detection, RAM sliders, JVM args, metadata | Runtime selection UI |
-| Settings | Theme (system/light/dark, persisted), Java runtime section | Java args, download options, storage picker |
-| Launching | Launch pipeline: validation, client jar fetch, classpath + JVM/game args, native extraction, process spawn, log streaming, crash analysis, offline UUID | Renderer glue (GLFW stub), Microsoft auth |
+| UI | Compose Home / Accounts / Versions / Settings screens; full-screen Launch console | Touch controls, renderer overlay |
+| Accounts | Offline accounts: create/select/rename/delete, deterministic pixel avatars | Microsoft sign-in |
+| Versions | Manifest browser + filters + search, full vanilla install, install-state tracking, live progress, repair | Fabric/Forge |
+| Runtime | Java runtime manager: install/verify/repair/remove, arch detection, RAM sliders, JVM args | Runtime selection UI |
+| Settings | Theme, Java runtime section, **Renderer section** (profile, resolution, FPS, VSync, native status) | Java args, download options, storage picker |
+| Native | **NativeRuntimeManager**: per-arch LWJGL extraction (stamps/cache, dedup), verification, JNI env (`java.library.path`, `org.lwjgl.librarypath`), arch-mismatch rejection | Renderer glue (GLFW stub) |
+| Launching | Launch pipeline: validation, client jar fetch, classpath + JVM/game args, native preparation, process spawn, log streaming, crash analysis | Renderer glue, Microsoft auth |
 
 ## Tech stack
 
@@ -68,20 +73,25 @@ LumoCraft/
 │       │   │   ├── runtime/              # RuntimeInfo, RuntimeRepository, JvmConfiguration
 │       │   │   ├── launch/               # LaunchContext, LaunchPipeline, LaunchProgress,
 │       │   │   │                         #   LaunchFailure/LaunchErrorType, OfflineUuid
+│       │   │   ├── native/               # NativeRuntimeManager, NativeStatus/NativeReport,
+│       │   │   │                         #   RendererProfile (presets + resolution), InputCompat
 │       │   │   └── model/                # ThemeMode
 │       │   ├── data/
 │       │   │   ├── account/              # SharedPreferences account repository
 │       │   │   ├── network/              # HttpClient, Downloader (retry + progress), HashUtils
 │       │   │   ├── storage/              # StorageManager: .minecraft layout + metadata
-│       │   │   ├── preferences/          # theme + version preference stores
+│       │   │   ├── preferences/          # theme, version + renderer profile stores
 │       │   │   ├── runtime/              # RuntimeInstaller, ArchiveExtractor, RuntimeVerifier,
 │       │   │   │                         #   DefaultRuntimeRepository
 │       │   │   ├── version/              # ManifestService, VersionInstaller, LibraryInstaller,
 │       │   │   │                         #   AssetInstaller, VerificationService, DownloadTracker
-│       │   │   └── launch/               # ClasspathBuilder, LaunchArgumentBuilder,
-│       │   │                             #   NativeExtractor, ClientJarManager, LaunchValidator,
-│       │   │                             #   JavaLauncher, CrashAnalyzer, LauncherLogRepository,
-│       │   │                             #   DefaultLaunchPipeline
+│       │   │   ├── launch/               # ClasspathBuilder, LaunchArgumentBuilder,
+│       │   │   │                         #   ClientJarManager, LaunchValidator, JavaLauncher,
+│       │   │   │                         #   CrashAnalyzer, LauncherLogRepository,
+│       │   │   │                         #   DefaultLaunchPipeline
+│       │   │   └── native/               # NativeLibraryManager, NativeExtractionService
+│       │   │                             #   (stamps/cache), NativeVerificationService,
+│       │   │                             #   DefaultNativeRuntimeManager
 │       │   ├── navigation/               # LumoDestination enum + AppNavHost (+ launch route)
 │       │   └── ui/
 │       │       ├── components/           # Navigation bar, small shared widgets
@@ -151,7 +161,37 @@ LumoCraft/
 - **Session logs.** Every launch writes `logs/launcher-<timestamp>.log`; the
   same lines stream to the Launch console through a replaying
   `SharedFlow`. Logs are shared via a FileProvider (`*.logs` authority)
-  from the "Open logs" action.
+  from the "Open logs" action. Phase 7 adds structured sections for
+  native extraction, renderer selection, JNI paths, architecture and
+  resolution.
+- **Native runtime manager.** `NativeRuntimeManager` is the small,
+  UI-free contract for native compatibility: locate native jars
+  (classifier libraries across the `inheritsFrom` chain), extract them
+  per architecture into `versions/<id>/natives/<arch>/`, verify them and
+  expose the JNI environment. Later phases (Fabric, Forge, Sodium,
+  OptiFine, custom renderers) add native surfaces without touching this
+  interface.
+- **Cached extraction.** `NativeExtractionService` writes a stamp
+  (`.stamp-<arch>.json`) listing each jar's contributed files and sizes;
+  intact stamps skip re-extraction entirely and damaged ones re-extract
+  only the affected jars. Multi-arch LWJGL jars are read once per
+  architecture; duplicate file names across jars keep the first
+  contributor and are counted.
+- **Native verification.** `NativeVerificationService` checks every
+  recorded file exists with its expected size, that the stamp
+  architecture matches the device (arch mismatch → corrupted) and
+  reports missing/corrupt lists so the pipeline can reject the launch
+  with an actionable message.
+- **Renderer profiles.** `RendererProfile` holds renderer type
+  (Compatibility/Performance/Experimental presets), resolution scale
+  (50/75/100%), FPS limit, VSync and mipmaps; it is persisted via
+  `RendererPreference` and injected at launch as `-Dlumocraft.*` JVM
+  flags plus scaled `resolution_width/height` game args — consumed by
+  the renderer glue in a later phase.
+- **Input foundation.** `InputCompat` defines `TouchMapper`,
+  `VirtualMouseController`, `KeyboardHandler` and `ControllerHandler`
+  plus an `InputEngine` registry; everything stays null until the
+  touch-controls phase fills it in.
 
 ## Building locally
 
@@ -224,6 +264,11 @@ Completed:
 - **Launch pipeline** — Home readiness gating, version picker, client jar
   fetch, classpath + JVM/game args, native extraction, Java process spawn,
   live console, crash analysis, offline UUID, session logs + FileProvider
+- **Android Renderer & Native Compatibility** — per-arch LWJGL native
+  extraction with stamps and dedup, native verification and arch-mismatch
+  rejection, JNI environment injection (`java.library.path`,
+  `org.lwjgl.librarypath`), renderer profiles with persisted settings UI,
+  resolution scaling, input compatibility foundation
 
 Next phases, in order:
 

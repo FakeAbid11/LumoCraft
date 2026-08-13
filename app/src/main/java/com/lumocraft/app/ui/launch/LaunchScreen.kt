@@ -265,6 +265,8 @@ private fun errorLabel(type: LaunchErrorType): Int = when (type) {
     LaunchErrorType.CLIENT_JAR_MISSING -> R.string.launch_error_client_jar
     LaunchErrorType.MAIN_CLASS_MISSING -> R.string.launch_error_main_class
     LaunchErrorType.NATIVE_LIBRARY_MISSING -> R.string.launch_error_native
+    LaunchErrorType.NATIVE_ARCH_MISMATCH -> R.string.launch_error_native_arch
+    LaunchErrorType.NATIVE_CORRUPTED -> R.string.launch_error_native_corrupted
     LaunchErrorType.INVALID_CLASSPATH -> R.string.launch_error_classpath
     LaunchErrorType.JVM_INITIALIZATION_FAILURE -> R.string.launch_error_jvm
     LaunchErrorType.GAME_CRASHED -> R.string.launch_error_crashed

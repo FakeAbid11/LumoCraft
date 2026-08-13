@@ -51,6 +51,7 @@ fun SettingsScreen(
             )
         }
         RuntimeSettingsSection()
+        RendererSettingsSection()
         SettingsSection(title = stringResource(R.string.settings_section_launcher)) {
             ComingSoonRow(label = stringResource(R.string.settings_launcher_directory))
         }
