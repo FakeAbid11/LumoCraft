@@ -40,6 +40,12 @@ class DefaultLaunchPipeline(
     private val launcher: JavaLauncher,
     private val crashAnalyzer: CrashAnalyzer,
     private val logs: LauncherLogRepository,
+    /**
+     * Injectable input snapshot for the session. The [LaunchPipeline]
+     * interface is unchanged; a provider keeps this decoupled until
+     * the input system is fully wired in a later phase.
+     */
+    private val inputConfiguration: () -> com.lumocraft.app.domain.input.InputConfiguration? = { null },
 ) : LaunchPipeline {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -87,6 +93,8 @@ class DefaultLaunchPipeline(
             val report = validator.validate(context)
             if (!report.ok) throw LaunchException(validationFailureMessage(report))
             writeLauncherLine("Validation passed")
+
+            inputConfiguration()?.let { config -> logs.logInputConfiguration(config) }
 
             _state.value = LaunchProgress(LaunchState.BUILDING_CLASSPATH, "Resolving classpath")
             val built = classpathBuilder.build(context.versionId).getOrElse { throw it }

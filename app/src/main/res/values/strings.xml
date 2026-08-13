@@ -122,6 +122,34 @@
     <string name="settings_java_runtime">Java runtime</string>
     <string name="settings_coming_soon">Coming soon</string>
 
+    <!-- Input -->
+    <string name="settings_section_input">Input</string>
+    <string name="input_profile">Profile</string>
+    <string name="input_profile_duplicate">Duplicate</string>
+    <string name="input_sensitivity">Sensitivity</string>
+    <string name="input_invert_y">Invert Y axis</string>
+    <string name="input_cursor_speed">Cursor speed</string>
+    <string name="input_button_opacity">Button opacity</string>
+    <string name="input_controller">Controller</string>
+    <string name="input_keyboard">Hardware keyboard</string>
+    <string name="input_connected">Connected</string>
+    <string name="input_disconnected">Disconnected</string>
+    <string name="input_edit_layout">Edit layout</string>
+    <string name="input_preview">Test controls</string>
+    <string name="input_preview_exit">Exit</string>
+    <string name="input_preview_edit_layout">Edit layout</string>
+    <string name="input_preview_pause">Pause</string>
+    <string name="input_preview_resume">Resume</string>
+    <string name="input_editor_title">Layout editor</string>
+    <string name="input_editor_unsaved">Unsaved changes</string>
+    <string name="input_editor_saved">All changes saved</string>
+    <string name="input_editor_reset">Reset</string>
+    <string name="input_editor_done">Done</string>
+    <string name="input_editor_size">Size</string>
+    <string name="input_editor_opacity">Opacity</string>
+    <string name="input_editor_select_hint">Tap a button to edit it</string>
+    <string name="input_editor_hint">Drag to move · drag the corner to resize</string>
+
     <!-- Runtime -->
     <string name="settings_section_runtime">Java Runtime</string>
     <string name="runtime_architecture">Architecture</string>

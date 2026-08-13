@@ -2,6 +2,13 @@ package com.lumocraft.app
 
 import android.app.Application
 import com.lumocraft.app.data.account.SharedPreferencesAccountRepository
+import com.lumocraft.app.data.input.AndroidControllerManager
+import com.lumocraft.app.data.input.AndroidKeyboardManager
+import com.lumocraft.app.data.input.AndroidTouchEventMapper
+import com.lumocraft.app.data.input.DefaultInputManager
+import com.lumocraft.app.data.input.DefaultVirtualMouseManager
+import com.lumocraft.app.data.input.InputPreferences
+import com.lumocraft.app.data.input.JsonInputRepository
 import com.lumocraft.app.data.launch.ClasspathBuilder
 import com.lumocraft.app.data.launch.ClientJarManager
 import com.lumocraft.app.data.launch.CrashAnalyzer
@@ -31,11 +38,17 @@ import com.lumocraft.app.data.version.ManifestService
 import com.lumocraft.app.data.version.VerificationService
 import com.lumocraft.app.data.version.VersionInstaller
 import com.lumocraft.app.domain.account.AccountRepository
+import com.lumocraft.app.domain.input.InputManager
+import com.lumocraft.app.domain.input.InputRepository
 import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.native.NativeRuntimeManager
 import com.lumocraft.app.domain.runtime.RuntimeRepository
 import com.lumocraft.app.domain.version.VersionRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Minimal manual dependency container — no DI framework needed.
@@ -113,8 +126,35 @@ class LumoCraftApplication : Application() {
             nativeRuntimeManager = nativeRuntimeManager,
             launcher = JavaLauncher(),
             crashAnalyzer = CrashAnalyzer(),
+            logs = launcherLogRepository,
+            inputConfiguration = { inputManager.configuration() }
+        )
+    }
+
+    val inputRepository: InputRepository by lazy {
+        JsonInputRepository(storageManager, InputPreferences(this))
+    }
+
+    /**
+     * The input framework (profiles, touch pipeline, virtual mouse,
+     * keyboard, controller). Initialized in [onCreate]; injectable
+     * into any future consumer through this single instance.
+     */
+    val inputManager: InputManager by lazy {
+        DefaultInputManager(
+            repository = inputRepository,
+            touchMapper = AndroidTouchEventMapper(),
+            virtualMouse = DefaultVirtualMouseManager(),
+            keyboard = AndroidKeyboardManager(),
+            controller = AndroidControllerManager(this),
             logs = launcherLogRepository
         )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        scope.launch { inputManager.initialize() }
     }
 
     /**

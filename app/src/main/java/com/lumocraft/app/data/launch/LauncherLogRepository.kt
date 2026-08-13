@@ -101,10 +101,53 @@ class LauncherLogRepository(private val storage: StorageManager) {
         writeLine("Architecture: $arch")
     }
 
-    /** Logs the effective game resolution. */
+/** Logs the effective game resolution. */
     suspend fun logResolution(width: Int, height: Int, scalePercent: Int) {
         writeSection("Resolution")
-        writeLine("window=${width}x$height (scale $scalePercent%)")
+        writeLine("window=${width}x${height} (scale $scalePercent%)")
+    }
+
+    /** Logs the input configuration a game session starts with. */
+    suspend fun logInputConfiguration(config: com.lumocraft.app.domain.input.InputConfiguration) {
+        writeSection("Input configuration")
+        writeLine(
+            "profile=${config.profileName} (${config.profileId}) " +
+                "sensitivity=${config.sensitivity} invertY=${config.invertY} mouseMode=${config.mouseMode}"
+        )
+        writeLine(
+            "cursorSpeed=${config.cursorSpeed} buttonOpacity=${config.buttonOpacity} " +
+                "controls=${config.controlCount} controller=${config.controllerEnabled} keyboard=${config.keyboardEnabled}"
+        )
+    }
+
+    /** Logs controller connection (detection). */
+    suspend fun logControllerDetected(deviceName: String?) {
+        writeLine("Controller detected: ${deviceName ?: "unknown device"}")
+    }
+
+    /** Logs controller disconnection. */
+    suspend fun logControllerDisconnected() {
+        writeLine("Controller disconnected")
+    }
+
+    /** Logs hardware keyboard connection. */
+    suspend fun logKeyboardConnected() {
+        writeLine("Hardware keyboard connected")
+    }
+
+    /** Logs hardware keyboard disconnection. */
+    suspend fun logKeyboardDisconnected() {
+        writeLine("Hardware keyboard disconnected")
+    }
+
+    /** Logs an input profile load. */
+    suspend fun logProfileLoaded(profileId: String, name: String, controlCount: Int) {
+        writeLine("Input profile loaded: $name ($profileId) — $controlCount controls")
+    }
+
+    /** Logs a control layout load. */
+    suspend fun logLayoutLoaded(profileId: String, controlCount: Int) {
+        writeLine("Control layout loaded for profile $profileId — $controlCount buttons")
     }
 
     /** Closes the session file; the file stays on disk. */

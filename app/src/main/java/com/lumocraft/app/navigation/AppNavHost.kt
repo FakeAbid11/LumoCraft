@@ -8,13 +8,16 @@ import androidx.navigation.compose.composable
 import com.lumocraft.app.domain.model.ThemeMode
 import com.lumocraft.app.ui.accounts.AccountsScreen
 import com.lumocraft.app.ui.home.HomeScreen
+import com.lumocraft.app.ui.input.ControlsPreviewScreen
+import com.lumocraft.app.ui.input.LayoutEditorScreen
 import com.lumocraft.app.ui.launch.LaunchScreen
 import com.lumocraft.app.ui.settings.SettingsScreen
 import com.lumocraft.app.ui.versions.VersionsScreen
 
 /**
- * NavHost wiring for all top-level destinations plus the plain launch
- * route (not part of [LumoDestination], so the bottom bar is hidden).
+ * NavHost wiring for all top-level destinations plus the plain routes
+ * (launch, input preview, layout editor) that are not part of
+ * [LumoDestination], so the bottom bar is hidden there.
  */
 @Composable
 fun AppNavHost(
@@ -42,13 +45,28 @@ fun AppNavHost(
         composable(LumoDestination.SETTINGS.route) {
             SettingsScreen(
                 themeMode = themeMode,
-                onThemeModeChange = onThemeModeChange
+                onThemeModeChange = onThemeModeChange,
+                onEditLayout = { navController.navigate(INPUT_LAYOUT_ROUTE) },
+                onPreviewControls = { navController.navigate(INPUT_PREVIEW_ROUTE) }
             )
         }
         composable(LAUNCH_ROUTE) {
             LaunchScreen()
         }
+        composable(INPUT_PREVIEW_ROUTE) {
+            ControlsPreviewScreen(
+                onEditLayout = { navController.navigate(INPUT_LAYOUT_ROUTE) },
+                onExit = { navController.popBackStack() }
+            )
+        }
+        composable(INPUT_LAYOUT_ROUTE) {
+            LayoutEditorScreen(
+                onDone = { navController.popBackStack() }
+            )
+        }
     }
 }
 
 private const val LAUNCH_ROUTE = "launch"
+private const val INPUT_PREVIEW_ROUTE = "input/preview"
+private const val INPUT_LAYOUT_ROUTE = "input/layout"

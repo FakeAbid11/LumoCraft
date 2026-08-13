@@ -25,16 +25,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lumocraft.app.R
 import com.lumocraft.app.domain.model.ThemeMode
+import com.lumocraft.app.ui.input.InputSettingsSection
 
 /**
- * Settings section. Appearance and Java runtime settings are live;
- * launcher-level settings arrive in later development stages.
+ * Settings section. Appearance, Java runtime and renderer settings are
+ * live; the input section adds profiles, sensitivity and control layout.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onEditLayout: () -> Unit,
+    onPreviewControls: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -52,6 +55,10 @@ fun SettingsScreen(
         }
         RuntimeSettingsSection()
         RendererSettingsSection()
+        InputSettingsSection(
+            onEditLayout = onEditLayout,
+            onPreviewControls = onPreviewControls
+        )
         SettingsSection(title = stringResource(R.string.settings_section_launcher)) {
             ComingSoonRow(label = stringResource(R.string.settings_launcher_directory))
         }

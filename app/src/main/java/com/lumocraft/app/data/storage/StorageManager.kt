@@ -55,6 +55,10 @@ class StorageManager(context: Context) {
 
     fun logsDirectory(): File = File(launcherRoot, "logs")
 
+    fun inputDirectory(): File = File(launcherRoot, "input")
+
+    fun inputProfilesDirectory(): File = File(inputDirectory(), "profiles")
+
     fun runtimeDirectory(): File = File(launcherRoot, "runtime")
 
     fun runtimeMetadataFile(): File = File(runtimeDirectory(), "metadata.json")
@@ -92,7 +96,8 @@ class StorageManager(context: Context) {
             indexesDirectory(),
             objectsDirectory(),
             logsDirectory(),
-            runtimeDirectory()
+            runtimeDirectory(),
+            inputProfilesDirectory()
         ).forEach { it.mkdirs() }
     }
 
