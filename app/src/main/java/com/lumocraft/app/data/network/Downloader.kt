@@ -135,8 +135,25 @@ class Downloader(
             file.delete()
             return Result.failure(IOException("Size mismatch for $url"))
         }
-        file.renameTo(destination)
+        if (!moveIntoPlace(file, destination)) {
+            return Result.failure(IOException("Could not move verified file into place: $url"))
+        }
         return Result.success(destination)
+    }
+
+    /**
+     * Moves [temp] to [destination], verified. `File.renameTo` can fail
+     * silently (e.g. crossing storage volumes) and returns `false` rather
+     * than throwing, so its result must be checked; a failed rename falls
+     * back to copy-then-delete so a verified download is never reported
+     * successful while still sitting at the temp path.
+     */
+    private fun moveIntoPlace(temp: File, destination: File): Boolean {
+        if (temp.renameTo(destination)) return true
+        return runCatching {
+            temp.copyTo(destination, overwrite = true)
+            temp.delete()
+        }.isSuccess && destination.isFile
     }
 
     private fun reportThroughput(bytes: Long, startedAtNanos: Long) {

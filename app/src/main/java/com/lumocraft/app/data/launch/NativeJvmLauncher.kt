@@ -169,7 +169,18 @@ class JvmProcessHandle internal constructor(
         try {
             while (true) {
                 coroutineContext.ensureActive()
-                val line = reader.readLine() ?: break
+                // pumpShutdown()/cancel() close `input` from another thread
+                // to unblock a pending readLine(); on some fds that surfaces
+                // as an IOException ("Bad file descriptor") rather than a
+                // clean EOF. pumpScope has no CoroutineExceptionHandler, so
+                // letting this escape would be an unhandled coroutine
+                // exception (a crash on Android) instead of the intended
+                // "stream ended" outcome.
+                val line = try {
+                    reader.readLine()
+                } catch (io: java.io.IOException) {
+                    null
+                } ?: break
                 runCatching { onLine(line) }
             }
         } finally {

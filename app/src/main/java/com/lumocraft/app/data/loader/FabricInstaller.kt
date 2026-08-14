@@ -201,8 +201,8 @@ class FabricInstaller(
             }
         }
         return FabricProfile(
-            loaderMaven = "",
-            intermediaryMaven = "",
+            loaderMaven = json.optString(KEY_LOADER_MAVEN),
+            intermediaryMaven = json.optString(KEY_INTERMEDIARY_MAVEN),
             loaderVersion = metadata.loaderVersion,
             minecraftVersion = metadata.minecraftVersion,
             mainClass = json.optString("mainClass"),
@@ -253,6 +253,11 @@ class FabricInstaller(
                 .put("mainClass", profile.mainClass)
                 .put("libraries", libraries)
                 .put("arguments", JSONObject().put("game", JSONArray(gameArguments)))
+                // Not part of the standard version-JSON schema, but persisted
+                // so profileFromDisk() can rebuild a FabricProfile during
+                // repair() without these silently coming back empty.
+                .put(KEY_LOADER_MAVEN, profile.loaderMaven)
+                .put(KEY_INTERMEDIARY_MAVEN, profile.intermediaryMaven)
             val file = storage.versionJsonFile(profile.instanceId)
             file.parentFile?.mkdirs()
             file.writeText(json.toString())
@@ -370,6 +375,8 @@ class FabricInstaller(
 
     private companion object {
         const val INSTALLER_VERSION = "fabric-installer-1"
+        const val KEY_LOADER_MAVEN = "lumocraft:loaderMaven"
+        const val KEY_INTERMEDIARY_MAVEN = "lumocraft:intermediaryMaven"
     }
 }
 

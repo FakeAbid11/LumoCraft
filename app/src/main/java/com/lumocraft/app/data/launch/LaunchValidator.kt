@@ -132,7 +132,12 @@ class LaunchValidator(
     private fun mainClassPresent(json: JSONObject): Boolean {
         if (json.optString("mainClass").isNotEmpty()) return true
         var parentId = json.optString("inheritsFrom").takeIf { it.isNotEmpty() } ?: return false
+        // Cycle guard: a corrupted or hand-edited version JSON could declare
+        // a circular inheritsFrom chain (A -> B -> A). Without this, the walk
+        // below never terminates. Mirrors ClasspathBuilder.loadChain's guard.
+        val seen = mutableSetOf<String>()
         while (true) {
+            if (!seen.add(parentId)) return false
             val parent = versionJson(parentId) ?: return false
             if (parent.optString("mainClass").isNotEmpty()) return true
             parentId = parent.optString("inheritsFrom").takeIf { it.isNotEmpty() } ?: return false
