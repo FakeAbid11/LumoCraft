@@ -13,6 +13,7 @@ import com.lumocraft.app.core.version.VersionManager
 import com.lumocraft.app.data.export.CrashReportExporter
 import com.lumocraft.app.data.export.ExportKind
 import com.lumocraft.app.data.export.ExportResult
+import com.lumocraft.app.data.export.LogRedactor
 import com.lumocraft.app.domain.loader.LoaderMetadata
 import com.lumocraft.app.domain.performance.DeviceProfile
 import com.lumocraft.app.domain.runtime.RuntimeInfo
@@ -53,6 +54,10 @@ class DiagnosticsViewModel(
     private val _shareIntent = MutableStateFlow<Intent?>(null)
     val shareIntent: StateFlow<Intent?> = _shareIntent.asStateFlow()
 
+    private val logRedactor: LogRedactor by lazy {
+        LogRedactor(application, application.storageManager)
+    }
+
     init {
         refresh()
     }
@@ -87,7 +92,7 @@ class DiagnosticsViewModel(
             val usernames = application.accountRepository.observeAccounts().first().mapNotNull { it.username }
             val result = exporter.export(
                 kind = kind,
-                redact = { line -> redactLine(line, usernames) }
+                redact = { line -> logRedactor.redact(line, usernames) }
             )
             result.fold(
                 onSuccess = { res ->
@@ -157,20 +162,6 @@ class DiagnosticsViewModel(
 
     fun consumeShare() {
         _shareIntent.value = null
-    }
-
-    /**
-     * Replaces sensitive tokens (account usernames) with placeholders so
-     * exported logs never leak a person's identity.
-     */
-    private fun redactLine(line: String, usernames: List<String>): String {
-        var out = line
-        for (name in usernames) {
-            if (name.isNotEmpty()) {
-                out = out.replace(name, "[REDACTED]")
-            }
-        }
-        return out
     }
 
     /** Q+: the file lives in public Downloads — no sharing needed. Pre-Q: share it. */

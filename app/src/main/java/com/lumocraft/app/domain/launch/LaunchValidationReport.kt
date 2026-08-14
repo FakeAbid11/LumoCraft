@@ -9,6 +9,8 @@ data class LaunchValidationReport(
     val accountOk: Boolean = false,
     val runtimeOk: Boolean = false,
     val versionOk: Boolean = false,
+    /** True when the version JSON file exists and parses. */
+    val versionJsonOk: Boolean = true,
     val mainClassOk: Boolean = false,
     val clientJarOk: Boolean = false,
     val assetIndexOk: Boolean = true,
@@ -22,7 +24,7 @@ data class LaunchValidationReport(
     val fromCache: Boolean = false
 ) {
     val ok: Boolean get() =
-        accountOk && runtimeOk && versionOk && mainClassOk &&
+        accountOk && runtimeOk && versionOk && versionJsonOk && mainClassOk &&
             clientJarOk && assetIndexOk && loggingConfigOk && nativeOk &&
             missingLibraries.isEmpty() && missingAssets == 0
 }

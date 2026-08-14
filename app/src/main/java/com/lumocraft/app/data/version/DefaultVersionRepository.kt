@@ -11,7 +11,7 @@ import com.lumocraft.app.domain.version.VersionRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 
 /**
  * [VersionRepository] combining the manifest service (network) with the
@@ -53,11 +53,11 @@ class DefaultVersionRepository(
     private fun pipeline(
         version: MinecraftVersion,
         run: suspend (suspend (InstallProgress) -> Unit) -> Result<InstalledVersionMetadata>,
-    ): Flow<InstallProgress> = flow {
+    ): Flow<InstallProgress> = channelFlow {
         try {
-            val result = run { emit(it) }
+            val result = run { send(it) }
             if (result.isFailure) {
-                emit(
+                send(
                     InstallProgress(
                         versionId = version.id,
                         stage = InstallStage.COMPLETE,
@@ -68,7 +68,7 @@ class DefaultVersionRepository(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            emit(
+            send(
                 InstallProgress(
                     versionId = version.id,
                     stage = InstallStage.COMPLETE,

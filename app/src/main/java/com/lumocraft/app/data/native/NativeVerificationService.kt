@@ -42,6 +42,16 @@ class NativeVerificationService(private val storage: StorageManager) {
             val missing = mutableListOf<String>()
             val corrupt = mutableListOf<String>()
 
+            // A source jar that was never stamped means the extraction ran
+            // before that library existed (e.g. a library re-added after
+            // repair): the extraction is incomplete, not ready.
+            val stampedPaths = stamp.jars.map { it.jarPath }.toSet()
+            for (source in sources) {
+                if (source.libraryPath !in stampedPaths) {
+                    missing += source.libraryPath
+                }
+            }
+
             for (jar in stamp.jars) {
                 val source = sources.firstOrNull { it.libraryPath == jar.jarPath }
                 if (source != null && source.size != jar.jarSize) {

@@ -1,6 +1,5 @@
 package com.lumocraft.app.domain.launch
 
-import com.lumocraft.app.data.network.HashUtils
 import java.security.MessageDigest
 /**
  * Deterministic offline UUID generation (version-3 style, MD5).

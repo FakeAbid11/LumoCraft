@@ -14,6 +14,7 @@ import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 
@@ -94,11 +95,11 @@ class DefaultLoaderRepository(
 
     private fun pipeline(
         run: suspend (suspend (LoaderInstallProgress) -> Unit) -> Result<LoaderMetadata>,
-    ): Flow<LoaderInstallProgress> = flow {
+    ): Flow<LoaderInstallProgress> = channelFlow {
         try {
-            val result = run { emit(it) }
+            val result = run { send(it) }
             if (result.isFailure) {
-                emit(
+                send(
                     LoaderInstallProgress(
                         instanceId = "",
                         stage = LoaderInstallStage.COMPLETE,
@@ -109,7 +110,7 @@ class DefaultLoaderRepository(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            emit(
+            send(
                 LoaderInstallProgress(
                     instanceId = "",
                     stage = LoaderInstallStage.COMPLETE,

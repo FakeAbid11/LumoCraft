@@ -239,10 +239,11 @@ class NativeExtractionService(private val storage: StorageManager) {
     private fun archMatches(name: String, arch: RuntimeArchitecture): Boolean {
         val dir = name.substringBeforeLast('/', "").substringAfterLast('/')
         return when (dir) {
-            "arm64" -> arch == RuntimeArchitecture.ARM64_V8A
-            "arm32" -> arch == RuntimeArchitecture.ARMEABI_V7A
-            "x86_64" -> arch == RuntimeArchitecture.X86_64
-            else -> arch == RuntimeArchitecture.X86_64
+            "arm64", "linux-arm64" -> arch == RuntimeArchitecture.ARM64_V8A
+            "arm32", "linux-arm32" -> arch == RuntimeArchitecture.ARMEABI_V7A
+            "x86_64", "amd64", "linux", "linux-x86_64" -> arch == RuntimeArchitecture.X86_64
+            // Windows/macOS layouts are never valid for this device.
+            else -> false
         }
     }
 
@@ -256,7 +257,11 @@ class NativeExtractionService(private val storage: StorageManager) {
         const val BUFFER_SIZE = 16 * 1024
         const val NATIVES_DIR = "natives"
         val NATIVE_EXTENSIONS = listOf(".so", ".dylib", ".dll", ".jnilib")
-        val ARCH_DIRS = setOf("arm64", "arm32", "x86_64")
+        val ARCH_DIRS = setOf(
+            "arm64", "arm32", "x86_64", "amd64",
+            "linux", "linux-arm64", "linux-arm32", "linux-x86_64",
+            "windows", "win32", "win64", "macos", "darwin"
+        )
     }
 }
 

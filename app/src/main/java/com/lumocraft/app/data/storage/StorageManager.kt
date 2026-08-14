@@ -170,6 +170,7 @@ class StorageManager(context: Context) {
     /** Removes a version directory (version JSON, jar, metadata, logging). */
     fun removeVersionDirectory(versionId: String): Boolean {
         val dir = versionDirectory(versionId)
+        if (!dir.exists()) return false
         return dir.deleteRecursively()
     }
 

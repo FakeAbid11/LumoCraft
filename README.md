@@ -13,7 +13,10 @@ screen (Settings → Diagnostics) that exports session logs and a full
 hardware/software snapshot as a shareable ZIP, an **About** section with a
 manual update check against the GitHub release channel, a **first-launch
 onboarding wizard**, and a **GitHub Actions release workflow** that builds,
-signs and publishes release APKs with SHA-256 checksums.
+signs and publishes release APKs with SHA-256 checksums. The candidate is
+stabilized with automated versioning, hardened runtime/launch/native
+verification, redacted log export, baseline profiles and a unit-test
+gate in CI (68 tests).
 
 | Area | Current | Later |
 |---|---|---|
@@ -62,7 +65,7 @@ LumoCraft/
 │   ├── ISSUE_TEMPLATE/           # bug report + feature request templates
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── workflows/
-│       ├── build.yml             # CI: builds and uploads the debug APK
+│       ├── build.yml             # CI: debug APK + verify job (tests, lint, versioning)
 │       └── release.yml           # publishes signed release APK on tags
 ├── app/
 │   ├── build.gradle.kts
@@ -125,7 +128,14 @@ LumoCraft/
 │       │       └── home|accounts|settings|versions|launch|performance|diagnostics|onboarding/   # feature screens
 │       └── res/                          # strings, platform theme, adaptive icon, FileProvider paths
 ├── docs/
-│   └── testing-checklist.md             # manual test matrix for each release
+│   ├── architecture.md             # layers, install flow, concurrency rules
+│   ├── launch-pipeline.md          # launch stages, validation, crash types
+│   ├── runtime.md                  # Java runtime install/verify/repair
+│   ├── native-runtime.md           # LWJGL extraction, stamps, arch mapping
+│   ├── storage-layout.md           # full on-disk layout + cache semantics
+│   ├── ci.md                       # build/verify/release workflows, versioning
+│   ├── testing-checklist.md        # manual test matrix for each release
+│   └── troubleshooting.md          # install/launch failures + diagnostics
 ├── gradle/
 │   ├── libs.versions.toml               # version catalog
 │   └── wrapper/                         # Gradle 8.13 wrapper
@@ -163,10 +173,11 @@ LumoCraft/
   default runtime before returning it. The first installed runtime is
   automatically selected as default.
 - **Runtime verification.** `RuntimeVerifier` checks required binaries
-  (`bin/java`, `bin/javac`, `bin/keytool`), executable permissions, the
-  `release` metadata file version, and a recorded SHA-256 checksum of the
-  `release` file. Detailed `RuntimeVerificationReport` lists missing and
-  corrupt files so repair can target specific failures.
+  (`bin/java`, `bin/javac`, `bin/keytool`) with executable permissions,
+  the `release` metadata file version and its recorded SHA-256 checksum,
+  `lib/modules`, `lib/server/libjvm.so`, a non-empty `jmods/` and root
+  layout consistency. Detailed `RuntimeVerificationReport` lists missing
+  and corrupt files so repair can target specific failures.
 - **Streaming extraction.** `ArchiveExtractor` streams tar.gz/zip entries
   entry-by-entry, rejects path traversal, preserves executable permissions,
   and never loads archives into RAM.
@@ -256,6 +267,14 @@ LumoCraft/
 - **Runtime cache.** `RuntimeCache` skips re-verifying an unchanged
   runtime within a 5-minute window (id + path + release checksum), so
   repeated readiness checks and launches avoid rescanning.
+- **Install pipelines.** Every install/repair flow (`VersionRepository`,
+  `RuntimeRepository`, `LoaderRepository`) is a `channelFlow`, so progress
+  events are emitted safely from worker dispatchers (never a flow-invariant
+  violation), and the collector can cancel the whole operation by
+  cancelling collection.
+- **Unit tests.** 68 JVM + Robolectric tests cover versioning, offline
+  UUIDs, crash analysis, runtime verification, install/remove flows,
+  storage, accounts and launch arguments; they run in the CI verify job.
 - **Semantic versions.** `VersionManager` parses, compares and displays
   SemVer 2.0.0 values (`0.1.0-rc1`), used by the update checker and the
   About screen.
@@ -303,35 +322,43 @@ For most work, push to GitHub and let CI build — see below.
 
 ## CI (GitHub Actions)
 
-### Debug builds
+### Debug builds + verification
 
-`.github/workflows/build.yml` runs on every push and pull request:
+`.github/workflows/build.yml` runs on every push and pull request, with
+two parallel jobs:
 
-1. Checks out the repository
-2. Installs Temurin JDK 17
-3. Installs the Android SDK command-line tools (`android-actions/setup-android`)
-4. Sets up Gradle (with dependency caching)
-5. Runs `./gradlew assembleDebug --no-daemon` — the job **fails** if the
-   project does not compile
-6. Uploads `app-debug.apk` as a downloadable artifact (`lumocraft-debug-apk`)
+1. **Build** — `./gradlew assembleDebug`; the job **fails** if the project
+   does not compile, then uploads `app-debug.apk` (`lumocraft-debug-apk`).
+2. **Verify** — the quality gate: required config files exist,
+   `printVersionName`/`printVersionCode` resolve to valid SemVer / positive
+   integers, `./gradlew testDebugUnitTest` passes (68 unit tests), and
+   `./gradlew lintDebug` is clean.
 
 ### Releases
 
 `.github/workflows/release.yml` publishes signed release APKs. It runs on
 pushed tags matching `v*` (e.g. `v0.1.0-rc1`) or manually from the Actions
-tab (manual runs derive the tag from `versionName` in `app/build.gradle.kts`):
+tab (manual runs resolve the tag via `./gradlew -q printVersionName`):
 
-1. Resolves the release tag
+1. Resolves the release tag (non-semver tags are refused)
 2. Restores the signing keystore from the `ANDROID_KEYSTORE_BASE64` secret
    (plus `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`,
    `ANDROID_STORE_PASSWORD`) — without secrets the APK is built with the
    debug key so the workflow still succeeds
-3. Runs `./gradlew assembleRelease --no-daemon`
-4. Computes `app-release.apk.sha256`
-5. Uploads the APK + checksum as a workflow artifact
+3. Runs `./gradlew assembleRelease` (fails if the APK is missing/empty)
+4. Verifies integrity: `unzip -t`, `apksigner verify`, `sha256sum -c`
+5. Generates release notes from `git log` since the previous tag
 6. Creates a GitHub release with the APK + checksum attached; releases
    whose tag contains `-rc`/`-beta`/`-alpha`/`-snapshot`/`-preview` are
    marked as pre-releases
+
+### Versioning
+
+`versionName` and `versionCode` are derived automatically (docs/ci.md):
+`LUMOCRAFT_VERSION_NAME`/`LUMOCRAFT_VERSION_CODE` env overrides, then the
+git tag (`v` stripped) or git tag count, then defaults. `printVersionName`
+and `printVersionCode` Gradle tasks expose the resolved values to the
+workflows.
 
 ### Downloading the APK from GitHub Actions
 
@@ -340,6 +367,17 @@ tab (manual runs derive the tag from `versionName` in `app/build.gradle.kts`):
 3. Scroll to the **Artifacts** section
 4. Download **lumocraft-debug-apk** — a zip containing `app-debug.apk`
 5. Allow "install from unknown sources" on the device and install
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — layers, install flow, concurrency rules
+- [Launch pipeline](docs/launch-pipeline.md) — launch stages, validation report, crash types
+- [Java runtime](docs/runtime.md) — install/verify/repair flows, checks performed
+- [Native runtime](docs/native-runtime.md) — LWJGL extraction, stamps, architecture mapping
+- [Storage layout](docs/storage-layout.md) — full on-disk tree + cache semantics
+- [CI](docs/ci.md) — build/verify/release workflows, versioning rules
+- [Troubleshooting](docs/troubleshooting.md) — failures and how to diagnose them
+- [Testing checklist](docs/testing-checklist.md) — manual test matrix for releases
 
 ## Roadmap
 

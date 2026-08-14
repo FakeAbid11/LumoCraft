@@ -17,7 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -65,7 +65,7 @@ class DefaultRuntimeRepository(
         return RuntimeArchitecture.fromAbi(abi) ?: RuntimeArchitecture.ARM64_V8A
     }
 
-    override fun install(runtimeId: String): Flow<RuntimeProgress> = flow {
+    override fun install(runtimeId: String): Flow<RuntimeProgress> = channelFlow {
         try {
             val existing = _runtimes.value
             val hasDefault = existing.any { it.isDefault }
@@ -79,10 +79,10 @@ class DefaultRuntimeRepository(
                 vendor = "temurin",
                 archiveUrl = url,
                 archiveSha256 = null,
-                onProgress = { emit(it) }
+                onProgress = { send(it) }
             )
             if (result.isFailure) {
-                emit(
+                send(
                     RuntimeProgress(
                         runtimeId = runtimeId,
                         stage = RuntimeStage.COMPLETE,
@@ -91,7 +91,7 @@ class DefaultRuntimeRepository(
                 )
             } else {
                 val info = result.getOrThrow()
-                emit(RuntimeProgress(runtimeId, RuntimeStage.VERIFYING))
+                send(RuntimeProgress(runtimeId, RuntimeStage.VERIFYING))
                 val report = verifier.verify(info)
                 // First installed runtime (or any install when none is marked
                 // default) becomes the default automatically.
@@ -141,19 +141,19 @@ class DefaultRuntimeRepository(
         return Result.success(report)
     }
 
-    override fun repair(runtimeId: String): Flow<RuntimeProgress> = flow {
+    override fun repair(runtimeId: String): Flow<RuntimeProgress> = channelFlow {
         try {
             runtimeCache?.invalidate()
             val runtime = _runtimes.value.firstOrNull { it.id == runtimeId }
             if (runtime == null) {
-                emit(
+                send(
                     RuntimeProgress(
                         runtimeId = runtimeId,
                         stage = RuntimeStage.COMPLETE,
                         error = "Runtime not found"
                     )
                 )
-                return@flow
+                return@channelFlow
             }
             val report = verifier.verify(runtime)
             if (report.ok) {
@@ -161,8 +161,8 @@ class DefaultRuntimeRepository(
                 runtimeCache?.markValidated(updated)
                 writeRuntimeMetadata(updated)
                 _runtimes.value = readRuntimesFromDisk()
-                emit(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, 1f))
-                return@flow
+                send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, 1f))
+                return@channelFlow
             }
             val arch = runtime.architecture
             val url = buildRuntimeUrl(runtime.version, arch)
@@ -173,10 +173,10 @@ class DefaultRuntimeRepository(
                 vendor = runtime.vendor,
                 archiveUrl = url,
                 archiveSha256 = null,
-                onProgress = { emit(it) }
+                onProgress = { send(it) }
             )
             if (result.isFailure) {
-                emit(
+                send(
                     RuntimeProgress(
                         runtimeId = runtimeId,
                         stage = RuntimeStage.COMPLETE,
@@ -185,7 +185,7 @@ class DefaultRuntimeRepository(
                 )
             } else {
                 val info = result.getOrThrow().copy(isDefault = runtime.isDefault)
-                emit(RuntimeProgress(runtimeId, RuntimeStage.VERIFYING))
+                send(RuntimeProgress(runtimeId, RuntimeStage.VERIFYING))
                 val verifyReport = verifier.verify(info)
                 val verified = info.copy(
                     status = if (verifyReport.ok) RuntimeStatus.INSTALLED else RuntimeStatus.CORRUPTED

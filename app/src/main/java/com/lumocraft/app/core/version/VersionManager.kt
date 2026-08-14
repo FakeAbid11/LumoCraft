@@ -42,6 +42,21 @@ object VersionManager {
     fun current(): Version =
         parse(BuildConfig.VERSION_NAME) ?: Version(major = 0, minor = 0, patch = 0)
 
+    /** True when [raw] parses as a valid SemVer string (tolerates a leading `v`). */
+    fun isValid(raw: String?): Boolean = parse(raw) != null
+
+    /**
+     * Derives a monotonic version code from git release tags: the number
+     * of tags whose version is not newer than [version].
+     *
+     * v0.1.0 -> 1, v0.1.1 -> 2, v0.2.0 -> 3, ... so the code never needs
+     * manual bumps. Falls back to 1 when no tag is comparable.
+     */
+    fun versionCodeFromTags(version: Version, tags: List<String>): Int =
+        tags.mapNotNull { parse(it) }
+            .count { compare(it, version) <= 0 }
+            .coerceAtLeast(1)
+
     /** SemVer precedence: negative = [a] older, zero = equal, positive = newer. */
     fun compare(a: Version, b: Version): Int {
         val core = compareNumbers(a.major, b.major)

@@ -407,17 +407,21 @@ class DefaultLaunchPipeline(
     private fun validationFailureMessage(report: LaunchValidationReport): String =
         buildString {
             append("Validation failed:")
-            if (!report.accountOk) append(" account missing;")
-            if (!report.runtimeOk) append(" runtime missing;")
-            if (!report.versionOk) append(" version not installed;")
-            if (!report.mainClassOk) append(" main class missing;")
-            if (!report.clientJarOk) append(" client jar missing;")
-            if (!report.assetIndexOk) append(" asset index missing;")
-            if (!report.loggingConfigOk) append(" logging config missing;")
+            if (!report.accountOk) append(" add an account in Accounts;")
+            if (!report.runtimeOk) {
+                append(" runtime not verified (${report.runtimeDetail ?: "install one in Settings"});")
+            }
+            if (!report.versionOk) append(" reinstall the version (metadata missing or not installed);")
+            if (!report.versionJsonOk) append(" version JSON missing or unreadable — reinstall the version;")
+            if (!report.mainClassOk) append(" main class missing from the version JSON;")
+            if (!report.clientJarOk) append(" client jar missing — reinstall the version;")
+            if (!report.assetIndexOk) append(" asset index missing — reinstall or repair the version;")
+            if (!report.loggingConfigOk) append(" logging config missing — repair the version;")
             if (!report.nativeOk) append(" natives not ready (${report.nativeDetail});")
             if (report.missingLibraries.isNotEmpty()) {
                 append(
-                    " libraries missing: ${report.missingLibraries.take(MAX_REPORTED_LIBS).joinToString(", ")}"
+                    " ${report.missingLibraries.size} libraries missing" +
+                        " (${report.missingLibraries.take(MAX_REPORTED_LIBS).joinToString(", ")}...)"
                 )
             }
             if (report.missingAssets > 0) append(" ${report.missingAssets} assets missing;")

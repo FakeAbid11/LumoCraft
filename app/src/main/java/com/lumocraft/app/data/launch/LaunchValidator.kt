@@ -64,7 +64,15 @@ class LaunchValidator(
             if (runtimeReport.ok) runtimeCache?.markValidated(runtime)
         }
         val runtimeOk = cachedRuntimeOk || runtimeReport?.ok == true
-        val runtimeDetail = runtimeReport?.missingFiles?.takeIf { it.isNotEmpty() }?.joinToString()
+        val runtimeDetail = when {
+            runtime == null -> "No Java runtime installed — install one in Settings"
+            runtimeReport?.missingFiles?.isNotEmpty() == true ->
+                "Runtime incomplete: missing ${runtimeReport.missingFiles.take(8).joinToString(", ")}"
+            runtimeReport?.corruptFiles?.isNotEmpty() == true ->
+                "Runtime corrupt: ${runtimeReport.corruptFiles.take(8).joinToString(", ")}"
+            runtimeReport?.checksumDetail != null -> "Runtime checksum mismatch: ${runtimeReport.checksumDetail}"
+            else -> null
+        }
 
         val metadata = storage.readMetadata(context.versionId)
         val versionOk = metadata != null && metadata.state == InstallState.INSTALLED
@@ -74,6 +82,7 @@ class LaunchValidator(
             return@withContext LaunchValidationReport(
                 accountOk = accountOk,
                 runtimeOk = runtimeOk,
+                versionJsonOk = false,
                 runtimeDetail = runtimeDetail
             )
         }

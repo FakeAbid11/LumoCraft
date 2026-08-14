@@ -10,13 +10,18 @@ import kotlinx.coroutines.withContext
 /**
  * Verifies a runtime installation on disk.
  *
- * - required binaries exist (java, javac, keytool)
- * - metadata matches the on-disk state
- * - executable files are actually executable
- * - checksum matches when a recorded checksum is present
+ * - required binaries exist and are executable (bin/java, bin/javac, bin/keytool)
+ * - metadata (`release`) exists and matches the recorded version
+ * - checksum of the `release` file matches the recorded SHA-256 when present
+ * - `lib/modules` exists (JRT image — the JDK cannot start without it)
+ * - `lib/server/libjvm.so` exists (the HotSpot VM shared library)
+ * - `jmods/` exists and is non-empty (JDK image completeness)
+ * - runtime root layout is consistent (bin/, lib/ at the root, release
+ *   at the root — a nested JVM home is flagged)
  *
  * Returns a detailed [RuntimeVerificationReport] with missing and corrupt
- * file lists so callers can drive repair.
+ * file lists so callers can drive repair. A partially broken runtime is
+ * never reported as ok.
  */
 class RuntimeVerifier {
 
@@ -54,15 +59,54 @@ class RuntimeVerifier {
             val metadataOk = verifyMetadata(runtimeDir, runtime)
 
             // Checksum: verify the release file against the recorded checksum.
-            val checksumOk = verifyChecksum(runtimeDir, runtime, corrupt)
+            val (checksumOk, checksumDetail) = verifyChecksum(runtimeDir, runtime, corrupt)
+
+            // JRT image: lib/modules is what the JVM actually loads at startup.
+            val modulesFile = File(runtimeDir, "lib/modules")
+            val modulesOk = if (modulesFile.isFile) {
+                true
+            } else {
+                missing += "lib/modules"
+                false
+            }
+
+            // HotSpot server library: lib/server/libjvm.so (JDK 9+ layout).
+            val serverLib = File(runtimeDir, "lib/server/libjvm.so")
+            val serverOk = if (serverLib.isFile) {
+                true
+            } else {
+                missing += "lib/server/libjvm.so"
+                false
+            }
+
+            // jmods directory: present and non-empty for a complete JDK image.
+            val jmodsDir = File(runtimeDir, "jmods")
+            val jmodsOk = if (jmodsDir.isDirectory && jmodsDir.listFiles()?.isNotEmpty() == true) {
+                true
+            } else {
+                missing += "jmods/"
+                false
+            }
+
+            // Root consistency: bin/ and lib/ live at the runtime root, and
+            // the runtime is not a nested JVM home (bin/java would be one
+            // level down in that case).
+            val rootOk = File(runtimeDir, "bin").isDirectory &&
+                File(runtimeDir, "lib").isDirectory &&
+                File(runtimeDir, "bin/java").isFile
 
             RuntimeVerificationReport(
                 runtimeId = runtime.id,
                 binariesOk = binariesOk && executableOk,
                 metadataOk = metadataOk,
                 checksumOk = checksumOk,
+                modulesOk = modulesOk,
+                serverOk = serverOk,
+                jmodsOk = jmodsOk,
+                rootOk = rootOk,
                 missingFiles = missing,
-                corruptFiles = corrupt
+                corruptFiles = corrupt,
+                checksumDetail = checksumDetail
             )
         }
 
@@ -91,19 +135,19 @@ class RuntimeVerifier {
         runtimeDir: File,
         runtime: RuntimeInfo,
         corrupt: MutableList<String>,
-    ): Boolean {
-        val expected = runtime.checksum ?: return true
+    ): Pair<Boolean, String?> {
+        val expected = runtime.checksum ?: return true to null
         val releaseFile = File(runtimeDir, "release")
         if (!releaseFile.isFile) {
             corrupt += "release"
-            return false
+            return false to "release file missing"
         }
         val actual = HashUtils.sha256(releaseFile)
         if (actual != expected) {
             corrupt += "release"
-            return false
+            return false to "expected $expected, found $actual"
         }
-        return true
+        return true to null
     }
 
     private companion object {

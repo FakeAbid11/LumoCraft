@@ -34,7 +34,12 @@ class NativeLibraryManager(private val storage: StorageManager) {
                     val json = runCatching { JSONObject(jsonFile.readText()) }.getOrNull()
                         ?: break
                     for (ref in VersionJson.libraries(json)) {
-                        if (ref.classifier == null) continue
+                        // Only true native classifiers carry JNI binaries
+                        // ("natives" / "natives-linux" / "natives-linux-arm64").
+                        // Other classifiers (sources, javadoc, …) must never
+                        // be treated as native sources.
+                        val classifier = ref.classifier ?: continue
+                        if (!classifier.contains("natives")) continue
                         val file = storage.libraryFile(ref.path)
                         if (file.isFile) {
                             result.putIfAbsent(
