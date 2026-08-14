@@ -12,11 +12,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
- * Pure-JVM tests: a fake runtime tree is created under a temp folder and
- * [RuntimeVerifier] is exercised against it. No Minecraft is launched.
+ * Verifies [RuntimeVerifier] against a fake runtime tree under a temp
+ * folder. Robolectric is required because the verifier logs through
+ * android.util.Log. No Minecraft is launched.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class RuntimeVerifierTest {
 
     @get:Rule

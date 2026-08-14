@@ -1,5 +1,6 @@
 package com.lumocraft.app.data.runtime
 
+import android.util.Log
 import com.lumocraft.app.data.network.HashUtils
 import com.lumocraft.app.domain.runtime.RuntimeInfo
 import com.lumocraft.app.domain.runtime.RuntimeVerificationReport
@@ -10,7 +11,9 @@ import kotlinx.coroutines.withContext
 /**
  * Verifies a runtime installation on disk.
  *
- * - required binaries exist and are executable (bin/java, bin/javac, bin/keytool)
+ * - required binaries exist, are regular files and are executable
+ *   (bin/java, bin/javac, bin/keytool) — every binary is classified as
+ *   Missing, Not executable or Corrupted
  * - metadata (`release`) exists and matches the recorded version
  * - checksum of the `release` file matches the recorded SHA-256 when present
  * - `lib/modules` exists (JRT image — the JDK cannot start without it)
@@ -37,23 +40,32 @@ class RuntimeVerifier {
 
             val missing = mutableListOf<String>()
             val corrupt = mutableListOf<String>()
+            val notExecutable = mutableListOf<String>()
 
-            // Required binaries.
-            val binariesOk = REQUIRED_BINARIES.all { name ->
+            // Required launcher binaries: each must exist, be a regular
+            // file and carry the executable bit. Classification:
+            // exists()==false -> Missing, !isFile -> Corrupted,
+            // !canExecute() -> Not executable. A non-executable bin/java
+            // must stop every launch path (ProcessBuilder would fail
+            // with Permission denied).
+            REQUIRED_BINARIES.forEach { name ->
                 val file = File(runtimeDir, name)
-                if (!file.isFile) {
-                    missing += name
-                    false
-                } else {
-                    true
+                when {
+                    !file.exists() -> missing += name
+                    !file.isFile -> corrupt += name
+                    !file.canExecute() -> {
+                        notExecutable += name
+                        Log.e(
+                            TAG,
+                            "RUNTIME_EXECUTABLE_FAILED path=${file.absolutePath} " +
+                                "canExecute=false result=notExecutable"
+                        )
+                    }
+                    else -> Unit
                 }
             }
 
-            // Executable check.
-            val executableOk = REQUIRED_BINARIES.all { name ->
-                val file = File(runtimeDir, name)
-                !file.isFile || file.canExecute()
-            }
+            val binariesOk = missing.isEmpty() && corrupt.isEmpty() && notExecutable.isEmpty()
 
             // Metadata check: release file exists and contains expected version.
             val metadataOk = verifyMetadata(runtimeDir, runtime)
@@ -97,7 +109,7 @@ class RuntimeVerifier {
 
             RuntimeVerificationReport(
                 runtimeId = runtime.id,
-                binariesOk = binariesOk && executableOk,
+                binariesOk = binariesOk,
                 metadataOk = metadataOk,
                 checksumOk = checksumOk,
                 modulesOk = modulesOk,
@@ -105,6 +117,7 @@ class RuntimeVerifier {
                 jmodsOk = jmodsOk,
                 rootOk = rootOk,
                 missingFiles = missing,
+                notExecutableFiles = notExecutable,
                 corruptFiles = corrupt,
                 checksumDetail = checksumDetail
             )
@@ -151,6 +164,8 @@ class RuntimeVerifier {
     }
 
     private companion object {
+        const val TAG = "LumoCraft/RuntimeVerifier"
+
         val REQUIRED_BINARIES = listOf(
             "bin/java",
             "bin/javac",

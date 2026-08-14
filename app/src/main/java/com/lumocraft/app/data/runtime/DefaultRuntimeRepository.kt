@@ -164,6 +164,23 @@ class DefaultRuntimeRepository(
                 send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, 1f))
                 return@channelFlow
             }
+
+            // Permission repair first: reapply executable bits on the
+            // existing runtime and reverify. Only redownload when the
+            // runtime is still broken after the permission repair, so
+            // common Permission-denied failures never cost a download.
+            send(RuntimeProgress(runtimeId, RuntimeStage.VERIFYING))
+            val repaired = RuntimePermissions.restoreExecutableBits(File(runtime.path)) &&
+                verifier.verify(runtime).ok
+            if (repaired) {
+                val updated = runtime.copy(status = RuntimeStatus.INSTALLED)
+                runtimeCache?.markValidated(updated)
+                writeRuntimeMetadata(updated)
+                _runtimes.value = readRuntimesFromDisk()
+                send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, 1f))
+                return@channelFlow
+            }
+
             val arch = runtime.architecture
             val url = buildRuntimeUrl(runtime.version, arch)
             val result = installer.install(

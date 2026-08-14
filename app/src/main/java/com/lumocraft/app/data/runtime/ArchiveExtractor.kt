@@ -42,7 +42,27 @@ class ArchiveExtractor {
                     extractZip(archive, destinationDir, onProgress)
                 else -> throw IOException("Unsupported archive format: ${archive.name}")
             }
+            // Android does not preserve POSIX exec metadata through
+            // extraction, so reapply executable bits explicitly instead
+            // of relying only on the TAR mode bits.
+            restoreLauncherPermissions(destinationDir)
         }
+    }
+
+    /**
+     * Locates every `bin/` directory under [destinationDir] (the runtime
+     * root, or a JVM home nested one level deep) and explicitly marks
+     * every launcher binary executable via
+     * [RuntimePermissions.restoreExecutableBits].
+     */
+    private fun restoreLauncherPermissions(destinationDir: File) {
+        val roots = buildList {
+            if (File(destinationDir, "bin").isDirectory) add(destinationDir)
+            destinationDir.listFiles()?.forEach { child ->
+                if (child.isDirectory && File(child, "bin").isDirectory) add(child)
+            }
+        }
+        roots.forEach { RuntimePermissions.restoreExecutableBits(it) }
     }
 
     private suspend fun extractTarGz(

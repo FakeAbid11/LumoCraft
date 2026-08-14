@@ -6,7 +6,8 @@ package com.lumocraft.app.domain.runtime
  * [ok] is true only when every check passed: required binaries,
  * metadata, checksum, `lib/modules`, `lib/server`, `jmods` and root
  * layout consistency. A partially broken runtime is never reported as
- * ok — callers can drive repair from [missingFiles]/[corruptFiles].
+ * ok — callers can drive repair from [missingFiles], [notExecutableFiles]
+ * and [corruptFiles].
  */
 data class RuntimeVerificationReport(
     val runtimeId: String,
@@ -18,11 +19,13 @@ data class RuntimeVerificationReport(
     val jmodsOk: Boolean = false,
     val rootOk: Boolean = false,
     val missingFiles: List<String> = emptyList(),
+    /** Binaries that exist but lack the executable bit. */
+    val notExecutableFiles: List<String> = emptyList(),
     val corruptFiles: List<String> = emptyList(),
     /** Human-readable checksum mismatch detail (expected vs actual). */
     val checksumDetail: String? = null
 ) {
     val ok: Boolean get() = binariesOk && metadataOk && checksumOk &&
         modulesOk && serverOk && jmodsOk && rootOk &&
-        missingFiles.isEmpty() && corruptFiles.isEmpty()
+        missingFiles.isEmpty() && notExecutableFiles.isEmpty() && corruptFiles.isEmpty()
 }

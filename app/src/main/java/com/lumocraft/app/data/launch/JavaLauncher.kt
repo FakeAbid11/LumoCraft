@@ -1,5 +1,9 @@
 package com.lumocraft.app.data.launch
 
+import android.util.Log
+import com.lumocraft.app.data.runtime.RuntimePermissions
+import com.lumocraft.app.domain.launch.LaunchErrorType
+import com.lumocraft.app.domain.launch.LaunchException
 import java.io.File
 import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
@@ -69,13 +73,53 @@ class JavaProcessHandle internal constructor(private val process: Process) {
 /** Spawns [JavaCommand]'s process without blocking the caller. */
 class JavaLauncher {
 
+    /**
+     * Pre-flight diagnostics before [ProcessBuilder]: absolute path,
+     * existence, readability, executability and parent directory
+     * permissions. A non-executable launcher is refused up front with a
+     * user-friendly [LaunchException] instead of a raw
+     * `Permission denied` crash from ProcessBuilder.
+     */
     suspend fun start(command: JavaCommand): JavaProcessHandle = withContext(Dispatchers.IO) {
+        val executable = command.executable
+        logDiagnostics(executable)
+        if (!RuntimePermissions.canExecute(executable)) {
+            Log.e(
+                TAG,
+                "RUNTIME_EXECUTABLE_FAILED path=${executable.absolutePath} " +
+                    "canExecute=${executable.canExecute()} result=launchRefused"
+            )
+            throw LaunchException(
+                message = "The Java binary is missing or not executable: " +
+                    executable.absolutePath,
+                type = LaunchErrorType.PERMISSION_DENIED
+            )
+        }
         val builder = ProcessBuilder(
-            command.executable.absolutePath,
+            executable.absolutePath,
             *command.arguments.toTypedArray()
         )
         builder.directory(command.workingDirectory)
         builder.environment().putAll(command.environment)
         JavaProcessHandle(builder.start())
+    }
+
+    private fun logDiagnostics(executable: File) {
+        val parent = executable.parentFile
+        Log.d(
+            TAG,
+            "JAVA_LAUNCHER_PREFLIGHT " +
+                "path=${executable.absolutePath} " +
+                "exists=${executable.exists()} " +
+                "canRead=${executable.canRead()} " +
+                "canExecute=${executable.canExecute()} " +
+                "parentExists=${parent?.exists() ?: false} " +
+                "parentCanRead=${parent?.canRead() ?: false} " +
+                "parentCanWrite=${parent?.canWrite() ?: false}"
+        )
+    }
+
+    private companion object {
+        const val TAG = "LumoCraft/JavaLauncher"
     }
 }

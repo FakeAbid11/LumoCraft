@@ -1,5 +1,6 @@
 package com.lumocraft.app.data.runtime
 
+import android.util.Log
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.network.HashUtils
 import com.lumocraft.app.data.storage.StorageManager
@@ -79,6 +80,30 @@ class RuntimeInstaller(
             archiveFile.delete()
 
             val jvmRoot = findJvmRoot(runtimeDir)
+
+            // 1. Restore executable bits on every launcher binary: Android
+            //    does not preserve POSIX exec metadata through extraction,
+            //    so this must be done explicitly rather than relying on
+            //    the TAR mode bits.
+            RuntimePermissions.restoreExecutableBits(jvmRoot)
+
+            // 2. Verify bin/java is actually executable. A runtime whose
+            //    launcher cannot run must never be marked INSTALLED.
+            val javaBinary = File(jvmRoot, "bin/java")
+            if (!RuntimePermissions.canExecute(javaBinary)) {
+                Log.e(
+                    TAG,
+                    "RUNTIME_EXECUTABLE_FAILED path=${javaBinary.absolutePath} " +
+                        "canExecute=${javaBinary.canExecute()} result=installAborted"
+                )
+                return@withContext Result.failure(
+                    IOException(
+                        "Installed Java runtime is not executable: " +
+                            javaBinary.absolutePath
+                    )
+                )
+            }
+
             val releaseFile = File(jvmRoot, "release")
             val checksum = if (releaseFile.isFile) {
                 HashUtils.sha256(releaseFile)
@@ -114,5 +139,9 @@ class RuntimeInstaller(
             }
         }
         return runtimeDir
+    }
+
+    private companion object {
+        const val TAG = "LumoCraft/RuntimeInstaller"
     }
 }
