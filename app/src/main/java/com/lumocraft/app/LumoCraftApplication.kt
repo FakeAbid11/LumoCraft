@@ -157,7 +157,8 @@ class LumoCraftApplication : Application() {
                 onFilesChanged = { versionId ->
                     performanceManager.cache().removeEntry(versionId)
                     performanceManager.verifier().invalidate(versionId)
-                }
+                },
+                logs = launcherLogRepository
             ),
             storage = storage
         )

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lumocraft.app.LumoCraftApplication
 import com.lumocraft.app.R
+import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.domain.loader.LoaderInstallProgress
 import com.lumocraft.app.domain.loader.LoaderInstallStage
 import com.lumocraft.app.domain.loader.LoaderInstance
@@ -80,6 +81,7 @@ data class VersionsUiState(
 class VersionViewModel(
     private val repository: VersionRepository,
     private val loaderRepository: LoaderRepository,
+    private val launcherLogRepository: LauncherLogRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VersionsUiState())
@@ -216,28 +218,48 @@ class VersionViewModel(
     private fun runInstall(flow: Flow<InstallProgress>, isRepair: Boolean) {
         if (installJob?.isActive == true) return
         installJob = viewModelScope.launch {
-            flow.collect { progress ->
-                _uiState.update { state ->
-                    when {
-                        progress.error != null -> state.copy(
-                            installingId = null,
-                            installProgress = null,
-                            errorMessageRes = if (isRepair) {
-                                R.string.versions_repair_failed
-                            } else {
-                                R.string.versions_install_failed
-                            }
-                        )
-                        progress.stage == InstallStage.COMPLETE -> state.copy(
-                            installingId = null,
-                            installProgress = null
-                        )
-                        else -> state.copy(
-                            installingId = progress.versionId,
-                            installProgress = progress,
-                            errorMessageRes = null
-                        )
+            try {
+                flow.collect { progress ->
+                    _uiState.update { state ->
+                        when {
+                            progress.error != null -> state.copy(
+                                installingId = null,
+                                installProgress = null,
+                                errorMessageRes = if (isRepair) {
+                                    R.string.versions_repair_failed
+                                } else {
+                                    R.string.versions_install_failed
+                                }
+                            )
+                            progress.stage == InstallStage.COMPLETE -> state.copy(
+                                installingId = null,
+                                installProgress = null
+                            )
+                            else -> state.copy(
+                                installingId = progress.versionId,
+                                installProgress = progress,
+                                errorMessageRes = null
+                            )
+                        }
                     }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Last line of defense: no exception may terminate the install
+                // coroutine. Reset the install state and surface a recoverable
+                // error instead of crashing the app.
+                logInstallCrash(e)
+                _uiState.update {
+                    it.copy(
+                        installingId = null,
+                        installProgress = null,
+                        errorMessageRes = if (isRepair) {
+                            R.string.versions_repair_failed
+                        } else {
+                            R.string.versions_install_failed
+                        }
+                    )
                 }
             }
         }
@@ -246,26 +268,51 @@ class VersionViewModel(
     private fun runLoaderInstall(flow: Flow<LoaderInstallProgress>) {
         if (loaderInstallJob?.isActive == true) return
         loaderInstallJob = viewModelScope.launch {
-            flow.collect { progress ->
-                _uiState.update { state ->
-                    when {
-                        progress.error != null -> state.copy(
-                            installingLoaderId = null,
-                            loaderInstallProgress = null,
-                            errorMessageRes = R.string.loader_install_failed
-                        )
-                        progress.stage == LoaderInstallStage.COMPLETE -> state.copy(
-                            installingLoaderId = null,
-                            loaderInstallProgress = null
-                        )
-                        else -> state.copy(
-                            installingLoaderId = progress.instanceId.ifEmpty { state.installingLoaderId },
-                            loaderInstallProgress = progress,
-                            errorMessageRes = null
-                        )
+            try {
+                flow.collect { progress ->
+                    _uiState.update { state ->
+                        when {
+                            progress.error != null -> state.copy(
+                                installingLoaderId = null,
+                                loaderInstallProgress = null,
+                                errorMessageRes = R.string.loader_install_failed
+                            )
+                            progress.stage == LoaderInstallStage.COMPLETE -> state.copy(
+                                installingLoaderId = null,
+                                loaderInstallProgress = null
+                            )
+                            else -> state.copy(
+                                installingLoaderId = progress.instanceId.ifEmpty { state.installingLoaderId },
+                                loaderInstallProgress = progress,
+                                errorMessageRes = null
+                            )
+                        }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Same protection as vanilla installs: a loader install must
+                // never terminate the coroutine and crash the app.
+                logInstallCrash(e)
+                _uiState.update {
+                    it.copy(
+                        installingLoaderId = null,
+                        loaderInstallProgress = null,
+                        errorMessageRes = R.string.loader_install_failed
+                    )
+                }
             }
+        }
+    }
+
+    /** Logs an escaping install exception with its full stack trace. */
+    private suspend fun logInstallCrash(e: Throwable) {
+        launcherLogRepository.writeLine(
+            "Version install crashed: exception=${e::class.java.name} message=${e.message}"
+        )
+        e.stackTraceToString().lines().forEach { line ->
+            launcherLogRepository.writeLine(line)
         }
     }
 
@@ -275,7 +322,8 @@ class VersionViewModel(
                 val application = this[APPLICATION_KEY] as LumoCraftApplication
                 VersionViewModel(
                     repository = application.versionRepository,
-                    loaderRepository = application.loaderRepository
+                    loaderRepository = application.loaderRepository,
+                    launcherLogRepository = application.launcherLogRepository
                 )
             }
         }

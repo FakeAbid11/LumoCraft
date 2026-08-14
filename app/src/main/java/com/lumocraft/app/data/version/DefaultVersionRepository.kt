@@ -1,5 +1,6 @@
 package com.lumocraft.app.data.version
 
+import com.lumocraft.app.core.config.AppConfig
 import com.lumocraft.app.data.storage.StorageManager
 import com.lumocraft.app.domain.version.InstallProgress
 import com.lumocraft.app.domain.version.InstallStage
@@ -67,7 +68,21 @@ class DefaultVersionRepository(
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Unexpected failures (Errors, latent bugs) must never escape the
+            // pipeline: record a FAILED install state and surface the error
+            // through the progress channel so the UI stays in control.
+            runCatching {
+                storage.writeMetadata(
+                    InstalledVersionMetadata(
+                        version = version.id,
+                        installedAt = System.currentTimeMillis(),
+                        source = version.url,
+                        installerVersion = AppConfig.INSTALLER_VERSION,
+                        state = InstallState.FAILED
+                    )
+                )
+            }
             send(
                 InstallProgress(
                     versionId = version.id,

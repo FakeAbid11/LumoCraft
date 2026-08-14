@@ -1,6 +1,7 @@
 package com.lumocraft.app.data.version
 
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.data.network.HashUtils
 import com.lumocraft.app.data.network.Downloader
 import com.lumocraft.app.data.storage.StorageManager
@@ -36,6 +37,11 @@ class VersionInstaller(
      * be invalidated exactly when needed.
      */
     val onFilesChanged: (suspend (versionId: String) -> Unit)? = null,
+    /**
+     * Optional session logger for structured install-stage logs. Null in
+     * tests and standalone use; every call is a no-op then.
+     */
+    private val logs: LauncherLogRepository? = null,
 ) {
 
     suspend fun install(
@@ -53,9 +59,11 @@ class VersionInstaller(
         storage.prepareDirectories()
 
         // 1. Scan: redownload only what is actually broken.
+        logStageStart(id, InstallStage.VERIFICATION)
         verificationListener(null, 0, 0, 0, 0)
         val report = verificationService.scan(id)
         if (report.ok) {
+            logStageEnd(id, InstallStage.VERIFICATION)
             val metadata = storage.readMetadata(id)
             val verified = metadata?.copy(state = InstallState.INSTALLED)
                 ?: InstalledVersionMetadata(
@@ -98,73 +106,95 @@ class VersionInstaller(
             installerVersion = AppConfig.INSTALLER_VERSION,
             state = InstallState.PENDING
         )
+        // Required order: every folder (.minecraft/, versions/, libraries/,
+        // assets/, runtime/, logs/) must exist before any metadata write.
+        storage.prepareDirectories()
         if (writePending) {
             runCatching { storage.writeMetadata(pending) }
         }
-        storage.prepareDirectories()
+
+        logStageStart(id, InstallStage.PREPARING)
         listener(id, InstallStage.PREPARING, onProgress)(1f, 0, 0, 0, 0)
+        logStageEnd(id, InstallStage.PREPARING)
 
         // VERSION_JSON
+        logStageStart(id, InstallStage.VERSION_JSON)
         val jsonFile = downloadVersionJson(version, force?.forceVersionJson == true, onProgress)
         if (jsonFile.isFailure) {
-            return@withContext fail(id, pending, jsonFile.exceptionOrNull()?.message)
+            return@withContext fail(id, InstallStage.VERSION_JSON, pending, jsonFile.exceptionOrNull())
         }
         val json = try {
             JSONObject(jsonFile.getOrThrow().readText())
         } catch (e: Exception) {
-            return@withContext fail(id, pending, "Downloaded version JSON is not valid")
+            return@withContext fail(id, InstallStage.VERSION_JSON, pending, e)
         }
+        logStageEnd(id, InstallStage.VERSION_JSON)
 
         // LIBRARIES
+        logStageStart(id, InstallStage.LIBRARIES)
         val libraries = libraryInstaller.install(
             json,
             force?.libraryPaths ?: emptySet(),
             listener(id, InstallStage.LIBRARIES, onProgress)
         )
         if (libraries.isFailure) {
-            return@withContext fail(id, pending, libraries.exceptionOrNull()?.message)
+            return@withContext fail(id, InstallStage.LIBRARIES, pending, libraries.exceptionOrNull())
         }
+        logStageEnd(id, InstallStage.LIBRARIES)
 
         // ASSET_INDEX
+        logStageStart(id, InstallStage.ASSET_INDEX)
         val index = assetInstaller.downloadIndex(
             json,
             listener(id, InstallStage.ASSET_INDEX, onProgress)
         )
         if (index.isFailure) {
-            return@withContext fail(id, pending, index.exceptionOrNull()?.message)
+            return@withContext fail(id, InstallStage.ASSET_INDEX, pending, index.exceptionOrNull())
         }
+        logStageEnd(id, InstallStage.ASSET_INDEX)
 
         // ASSETS
+        logStageStart(id, InstallStage.ASSETS)
         val assets = assetInstaller.downloadObjects(
             index.getOrThrow(),
             force?.assetHashes ?: emptySet(),
             listener(id, InstallStage.ASSETS, onProgress)
         )
         if (assets.isFailure) {
-            return@withContext fail(id, pending, assets.exceptionOrNull()?.message)
+            return@withContext fail(id, InstallStage.ASSETS, pending, assets.exceptionOrNull())
         }
+        logStageEnd(id, InstallStage.ASSETS)
 
         // LOGGING_CONFIG
+        logStageStart(id, InstallStage.LOGGING_CONFIG)
         val logging = installLoggingConfig(id, json, force?.forceLoggingConfig == true, onProgress)
         if (logging.isFailure) {
-            return@withContext fail(id, pending, logging.exceptionOrNull()?.message)
+            return@withContext fail(id, InstallStage.LOGGING_CONFIG, pending, logging.exceptionOrNull())
         }
+        logStageEnd(id, InstallStage.LOGGING_CONFIG)
 
         // VERIFICATION
+        logStageStart(id, InstallStage.VERIFICATION)
         val verificationListener = listener(id, InstallStage.VERIFICATION, onProgress)
         verificationListener(null, 0, 0, 0, 0)
         val report = verificationService.scan(id)
         if (!report.ok) {
+            logStageFailure(id, InstallStage.VERIFICATION, IllegalStateException("Verification failed"))
             runCatching { storage.writeMetadata(pending.copy(state = InstallState.CORRUPTED)) }
             runCatching { onFilesChanged?.invoke(id) }
             onProgress(InstallProgress(id, InstallStage.VERIFICATION, error = "Verification failed"))
             return@withContext Result.failure(IllegalStateException("Verification failed"))
         }
+        logStageEnd(id, InstallStage.VERIFICATION)
+
+        // COMPLETE
+        logStageStart(id, InstallStage.COMPLETE)
         val installed = pending.copy(state = InstallState.INSTALLED)
         runCatching { storage.writeMetadata(installed) }
         verificationListener(1f, report.totalLibraries + report.totalAssets, 0, 0, 0)
         runCatching { onFilesChanged?.invoke(id) }
         onProgress(InstallProgress(id, InstallStage.COMPLETE, 1f, 0, 0, 0, 0))
+        logStageEnd(id, InstallStage.COMPLETE)
         Result.success(installed)
     }
 
@@ -253,13 +283,34 @@ class VersionInstaller(
         onProgress(InstallProgress(id, stage, fraction, done, remaining, bytes, total))
     }
 
-    private fun fail(
+    private suspend fun fail(
         id: String,
+        stage: InstallStage,
         pending: InstalledVersionMetadata,
-        message: String?,
+        cause: Throwable?,
     ): Result<InstalledVersionMetadata> {
+        logStageFailure(id, stage, cause)
         runCatching { storage.writeMetadata(pending.copy(state = InstallState.FAILED)) }
-        return Result.failure(IllegalStateException(message ?: "Installation failed"))
+        return Result.failure(IllegalStateException(cause?.message ?: "Installation failed"))
+    }
+
+    /** Structured install-stage log: one line before the stage runs. */
+    private suspend fun logStageStart(id: String, stage: InstallStage) {
+        logs?.writeLine("Install: version=$id stage=${stage.name} started")
+    }
+
+    /** Structured install-stage log: one line after the stage completes. */
+    private suspend fun logStageEnd(id: String, stage: InstallStage) {
+        logs?.writeLine("Install: version=$id stage=${stage.name} completed")
+    }
+
+    /** Structured install-stage log: stage failed with exception details. */
+    private suspend fun logStageFailure(id: String, stage: InstallStage, cause: Throwable?) {
+        logs?.writeLine(
+            "Install failed: version=$id stage=${stage.name} " +
+                "exception=${cause?.javaClass?.name ?: "unknown"} " +
+                "message=${cause?.message ?: "no message"}"
+        )
     }
 
     private data class RepairPlan(
