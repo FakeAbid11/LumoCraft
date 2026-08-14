@@ -62,6 +62,48 @@ class CrashAnalyzerTest {
     }
 
     @Test
+    fun `storage and permission problems are recognized`() {
+        val cases = listOf(
+            "Failed to create directory: /data/minecraft/versions",
+            "java.io.IOException: No space left on device",
+            "Directory is not writable: /data/minecraft",
+            "java.io.FileNotFoundException: /data/minecraft/metadata.json (Permission denied)"
+        )
+        val expected = listOf(
+            LaunchErrorType.STORAGE_UNAVAILABLE,
+            LaunchErrorType.STORAGE_UNAVAILABLE,
+            LaunchErrorType.STORAGE_UNAVAILABLE,
+            LaunchErrorType.PERMISSION_DENIED
+        )
+        cases.zip(expected).forEach { (line, type) ->
+            assertEquals("unmapped: $line", type, analyzer.analyze(1, listOf(line)).type)
+        }
+    }
+
+    @Test
+    fun `metadata, network and http problems are recognized`() {
+        val cases = listOf(
+            "INSTALL version=1.8.9 stage=PREPARING metadataWrite failed",
+            "java.net.UnknownHostException: launchermeta.mojang.com",
+            "java.net.ConnectException: Connection refused",
+            "HttpStatusException: HTTP 404 Not Found",
+            "SHA-1 mismatch for https://launcher.mojang.com/v1/objects/x.json",
+            "java.util.zip.ZipException: Unexpected end of ZLIB input stream"
+        )
+        val expected = listOf(
+            LaunchErrorType.METADATA_WRITE_FAILURE,
+            LaunchErrorType.NETWORK_UNAVAILABLE,
+            LaunchErrorType.NETWORK_UNAVAILABLE,
+            LaunchErrorType.HTTP_FAILURE,
+            LaunchErrorType.CORRUPTED_DOWNLOAD,
+            LaunchErrorType.CORRUPTED_DOWNLOAD
+        )
+        cases.zip(expected).forEach { (line, type) ->
+            assertEquals("unmapped: $line", type, analyzer.analyze(1, listOf(line)).type)
+        }
+    }
+
+    @Test
     fun `excerpt keeps the tail of the log`() {
         val lines = (1..100).map { "line $it" }
         val failure = analyzer.analyze(1, lines)

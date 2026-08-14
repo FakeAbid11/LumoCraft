@@ -60,7 +60,7 @@ class StorageManagerTest {
     @Test
     fun `prepareDirectories creates the full layout`() {
         val storage = storage()
-        storage.prepareDirectories()
+        assertTrue(storage.prepareDirectories().isSuccess)
         listOf(
             storage.versionsDirectory(),
             storage.librariesDirectory(),
@@ -72,6 +72,18 @@ class StorageManagerTest {
             storage.loaderInstancesDirectory(LoaderType.FABRIC),
             storage.loaderCacheDirectory(LoaderType.FABRIC)
         ).forEach { assertTrue("missing: $it", it.isDirectory) }
+    }
+
+    @Test
+    fun `prepareDirectories fails when a required path is not a directory`() {
+        val storage = storage()
+        val blocked = File(storage.launcherRoot(), "versions")
+        blocked.deleteRecursively()
+        blocked.writeText("file in the way")
+        val result = storage.prepareDirectories()
+        assertTrue(result.isFailure)
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        assertTrue("unexpected message: $message", message.contains("Not a directory"))
     }
 
     @Test

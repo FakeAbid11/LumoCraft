@@ -7,6 +7,7 @@ import com.lumocraft.app.domain.loader.LoaderType
 import com.lumocraft.app.domain.version.InstallState
 import com.lumocraft.app.domain.version.InstalledVersionMetadata
 import java.io.File
+import java.io.IOException
 import org.json.JSONObject
 
 /**
@@ -112,21 +113,55 @@ class StorageManager(context: Context) {
     fun loggingConfigFile(versionId: String, fileName: String): File =
         File(versionDirectory(versionId), sanitize(fileName))
 
-    /** Creates the full launcher layout. Safe to call repeatedly. */
-    fun prepareDirectories() {
-        listOf(
-            versionsDirectory(),
-            librariesDirectory(),
-            indexesDirectory(),
-            objectsDirectory(),
-            logsDirectory(),
-            runtimeDirectory(),
-            inputProfilesDirectory()
-        ).forEach { it.mkdirs() }
-        LoaderType.entries.forEach { type ->
-            loaderInstancesDirectory(type).mkdirs()
-            loaderCacheDirectory(type).mkdirs()
+    /**
+     * Creates the full launcher layout. Safe to call repeatedly.
+     * Returns a descriptive failure if any required directory is missing,
+     * is not a directory, or is not writable, so callers never assume
+     * storage is ready.
+     */
+    fun prepareDirectories(): Result<Unit> {
+        val required = buildList {
+            add(launcherRoot)
+            add(versionsDirectory())
+            add(librariesDirectory())
+            add(assetsDirectory())
+            add(indexesDirectory())
+            add(objectsDirectory())
+            add(logsDirectory())
+            add(runtimeDirectory())
+            add(inputDirectory())
+            add(inputProfilesDirectory())
+            add(File(launcherRoot, "loader"))
+            LoaderType.entries.forEach { type ->
+                add(loaderDirectory(type))
+                add(loaderInstancesDirectory(type))
+                add(loaderCacheDirectory(type))
+            }
         }
+        for (dir in required) {
+            if (!dir.exists() && !dir.mkdirs()) {
+                return Result.failure(
+                    IOException("Failed to create directory: ${dir.absolutePath}")
+                )
+            }
+            if (!dir.isDirectory) {
+                return Result.failure(
+                    IOException("Not a directory: ${dir.absolutePath}")
+                )
+            }
+            if (!dir.canWrite()) {
+                return Result.failure(
+                    IOException("Directory is not writable: ${dir.absolutePath}")
+                )
+            }
+            val parent = dir.parentFile
+            if (parent != null && !parent.isDirectory) {
+                return Result.failure(
+                    IOException("Parent is not a directory: ${parent.absolutePath}")
+                )
+            }
+        }
+        return Result.success(Unit)
     }
 
     fun readMetadata(versionId: String): InstalledVersionMetadata? {

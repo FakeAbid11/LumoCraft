@@ -63,6 +63,59 @@ class CrashAnalyzer {
                 tail.contains("no x11 display") ->
                 LaunchFailure(LaunchErrorType.NATIVE_LIBRARY_MISSING, excerpt)
 
+            // Storage problems (launcher layout, disk full, read-only).
+            tail.contains("failed to create directory") ||
+                tail.contains("cannot create directory") ||
+                tail.contains("storage not ready") ||
+                tail.contains("no space left on device") ||
+                tail.contains("read-only file system") ||
+                tail.contains("directory is not writable") ->
+                LaunchFailure(LaunchErrorType.STORAGE_UNAVAILABLE, excerpt)
+
+            // File system access problems.
+            tail.contains("permission denied") ||
+                tail.contains("access denied") ||
+                tail.contains("operation not permitted") ->
+                LaunchFailure(LaunchErrorType.PERMISSION_DENIED, excerpt)
+
+            // Install/launch metadata writes.
+            tail.contains("metadatawrite failed") ||
+                tail.contains("failed to write install metadata") ||
+                tail.contains("failed to write metadata") ->
+                LaunchFailure(LaunchErrorType.METADATA_WRITE_FAILURE, excerpt)
+
+            // Network problems (DNS, unreachable hosts, timeouts).
+            tail.contains("unknownhostexception") ||
+                tail.contains("unable to resolve host") ||
+                tail.contains("failed to connect") ||
+                tail.contains("connection refused") ||
+                tail.contains("connection timed out") ||
+                tail.contains("connectexception") ||
+                tail.contains("network is unreachable") ||
+                tail.contains("no route to host") ||
+                tail.contains("network unavailable") ||
+                tail.contains("socketexception") ->
+                LaunchFailure(LaunchErrorType.NETWORK_UNAVAILABLE, excerpt)
+
+            // HTTP failures from download endpoints.
+            tail.contains("httpstatus") ||
+                tail.contains("http 4") ||
+                tail.contains("http 5") ||
+                tail.contains("http error") ->
+                LaunchFailure(LaunchErrorType.HTTP_FAILURE, excerpt)
+
+            // Corrupted or truncated downloads.
+            tail.contains("sha-1 mismatch") ||
+                tail.contains("sha1 mismatch") ||
+                tail.contains("size mismatch for") ||
+                tail.contains("corrupted download") ||
+                tail.contains("checksum mismatch") ||
+                tail.contains("invalid or corrupt jarfile") ||
+                tail.contains("zip error") ||
+                tail.contains("unexpected end of zip") ||
+                tail.contains("unexpected end of zlib") ->
+                LaunchFailure(LaunchErrorType.CORRUPTED_DOWNLOAD, excerpt)
+
             else -> LaunchFailure(
                 LaunchErrorType.GAME_CRASHED,
                 excerpt

@@ -112,11 +112,6 @@ fun VersionsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = stringResource(R.string.nav_versions),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
                     TextButton(onClick = onOpenLoaders) {
                         Text(stringResource(R.string.loader_manager_open))
                     }

@@ -51,6 +51,17 @@ class DefaultVersionRepository(
         }
     }
 
+    /**
+     * Startup recovery: any version left in PENDING (process killed
+     * mid-install) is resolved to INSTALLED or FAILED via the existing
+     * verification scan, then install states are re-read so the UI never
+     * shows a dead PENDING state after a crash.
+     */
+    suspend fun recoverInterruptedInstalls() {
+        runCatching { installer.recoverInterruptedInstalls() }
+        _installedStates.value = storage.readInstallStates()
+    }
+
     private fun pipeline(
         version: MinecraftVersion,
         run: suspend (suspend (InstallProgress) -> Unit) -> Result<InstalledVersionMetadata>,

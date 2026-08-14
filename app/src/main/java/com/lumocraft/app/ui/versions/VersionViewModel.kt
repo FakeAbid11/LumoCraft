@@ -22,6 +22,9 @@ import com.lumocraft.app.domain.version.MinecraftVersion
 import com.lumocraft.app.domain.version.VersionFilter
 import com.lumocraft.app.domain.version.VersionManifest
 import com.lumocraft.app.domain.version.VersionRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -142,11 +145,11 @@ class VersionViewModel(
     }
 
     fun install(version: MinecraftVersion) {
-        runInstall(repository.install(version), isRepair = false)
+        runInstall(version, repository.install(version), isRepair = false)
     }
 
     fun repair(version: MinecraftVersion) {
-        runInstall(repository.repair(version), isRepair = true)
+        runInstall(version, repository.repair(version), isRepair = true)
     }
 
     fun remove(version: MinecraftVersion) {
@@ -215,9 +218,16 @@ class VersionViewModel(
         _uiState.update { it.copy(errorMessageRes = null) }
     }
 
-    private fun runInstall(flow: Flow<InstallProgress>, isRepair: Boolean) {
+    private fun runInstall(
+        version: MinecraftVersion,
+        flow: Flow<InstallProgress>,
+        isRepair: Boolean,
+    ) {
         if (installJob?.isActive == true) return
         installJob = viewModelScope.launch {
+            // Logged before the pipeline starts so INSTALL_REQUESTED always
+            // precedes the first PREPARING line in the session log.
+            logInstallRequested(version.id, if (isRepair) "repair" else "install")
             try {
                 flow.collect { progress ->
                     _uiState.update { state ->
@@ -315,6 +325,17 @@ class VersionViewModel(
             launcherLogRepository.writeLine(line)
         }
     }
+
+    /** One structured line before the pipeline starts: INSTALL_REQUESTED. */
+    private suspend fun logInstallRequested(versionId: String, action: String) {
+        launcherLogRepository.writeLine(
+            "[${installTimestamp()}] [${Thread.currentThread().name}] " +
+                "INSTALL version=$versionId stage=INSTALL_REQUESTED action=$action"
+        )
+    }
+
+    private fun installTimestamp(): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

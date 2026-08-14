@@ -61,7 +61,17 @@ class FabricInstaller(
             state = InstallState.PENDING
         )
         listener(LoaderInstallStage.PREPARING, onProgress)(1f, 0, 0, 0, 0)
-        storage.prepareDirectories()
+        val prepared = storage.prepareDirectories()
+        if (prepared.isFailure) {
+            onProgress(
+                LoaderInstallProgress(
+                    minecraftVersion,
+                    LoaderInstallStage.PREPARING,
+                    error = "Storage not ready: ${prepared.exceptionOrNull()?.message}"
+                )
+            )
+            return@withContext fail(pending, prepared.exceptionOrNull()?.message)
+        }
 
         if (!isVanillaInstalled(minecraftVersion)) {
             return@withContext fail(
@@ -105,7 +115,17 @@ class FabricInstaller(
             return@withContext Result.failure(IOException("Fabric instance '$instanceId' not found"))
         }
         listener(LoaderInstallStage.PREPARING, onProgress)(1f, 0, 0, 0, 0)
-        storage.prepareDirectories()
+        val prepared = storage.prepareDirectories()
+        if (prepared.isFailure) {
+            onProgress(
+                LoaderInstallProgress(
+                    instanceId,
+                    LoaderInstallStage.PREPARING,
+                    error = "Storage not ready: ${prepared.exceptionOrNull()?.message}"
+                )
+            )
+            return@withContext fail(existing, prepared.exceptionOrNull()?.message)
+        }
 
         val report = verificationService.scan(instanceId)
         if (report.ok) {

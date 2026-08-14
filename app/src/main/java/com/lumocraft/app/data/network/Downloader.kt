@@ -1,8 +1,12 @@
 package com.lumocraft.app.data.network
 
 import com.lumocraft.app.core.config.AppConfig
+import com.lumocraft.app.data.launch.LauncherLogRepository
 import java.io.File
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
@@ -18,12 +22,22 @@ import kotlin.coroutines.coroutineContext
  * interrupted downloads continue instead of restarting, and every
  * successful download feeds the shared [ThroughputTracker] so the
  * [DownloadScheduler] can adapt concurrency.
+ *
+ * Every failed attempt is logged through the optional [logs] repository
+ * ([ts] [thread] DOWNLOAD url= attempt= result= exception= message=) so
+ * network problems on device are diagnosable without spamming success
+ * lines for every file.
  */
 class Downloader(
     private val client: HttpClient,
     private val maxAttempts: Int = AppConfig.DOWNLOAD_MAX_ATTEMPTS,
     private val retryBackoffMs: Long = AppConfig.DOWNLOAD_RETRY_BACKOFF_MS,
     private val throughput: ThroughputTracker? = null,
+    /**
+     * Optional session logger; null in tests and standalone use, every
+     * call is a no-op then.
+     */
+    private val logs: LauncherLogRepository? = null,
 ) {
 
     suspend fun download(
@@ -40,7 +54,9 @@ class Downloader(
             if (result.isSuccess) return result
 
             lastFailure = result.exceptionOrNull()
-            if (!isRetryable(lastFailure) || attempt == maxAttempts - 1) {
+            val willRetry = isRetryable(lastFailure) && attempt < maxAttempts - 1
+            logAttempt(url, attempt, lastFailure, willRetry)
+            if (!willRetry) {
                 return result
             }
             delay(retryBackoffMs * (1L shl attempt))
@@ -67,7 +83,9 @@ class Downloader(
             if (result.isSuccess) return result
 
             lastFailure = result.exceptionOrNull()
-            if (!isRetryable(lastFailure) || attempt == maxAttempts - 1) {
+            val willRetry = isRetryable(lastFailure) && attempt < maxAttempts - 1
+            logAttempt(url, attempt, lastFailure, willRetry)
+            if (!willRetry) {
                 return result
             }
             delay(retryBackoffMs * (1L shl attempt))
@@ -138,4 +156,23 @@ class Downloader(
         is IOException -> true
         else -> false
     }
+
+    /** One structured line per failed attempt: [ts] [thread] DOWNLOAD url= attempt= result=. */
+    private suspend fun logAttempt(
+        url: String,
+        attempt: Int,
+        error: Throwable?,
+        retrying: Boolean,
+    ) {
+        logs?.writeLine(
+            "[${timestamp()}] [${Thread.currentThread().name}] " +
+                "DOWNLOAD url=$url attempt=${attempt + 1}/$maxAttempts " +
+                "result=${if (retrying) "retrying" else "failed"} " +
+                "exception=${error?.javaClass?.name ?: "unknown"} " +
+                "message=${error?.message ?: "no message"}"
+        )
+    }
+
+    private fun timestamp(): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 }

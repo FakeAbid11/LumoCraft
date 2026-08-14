@@ -269,6 +269,12 @@ private fun errorLabel(type: LaunchErrorType): Int = when (type) {
     LaunchErrorType.NATIVE_CORRUPTED -> R.string.launch_error_native_corrupted
     LaunchErrorType.INVALID_CLASSPATH -> R.string.launch_error_classpath
     LaunchErrorType.JVM_INITIALIZATION_FAILURE -> R.string.launch_error_jvm
+    LaunchErrorType.STORAGE_UNAVAILABLE -> R.string.launch_error_storage
+    LaunchErrorType.PERMISSION_DENIED -> R.string.launch_error_permission
+    LaunchErrorType.METADATA_WRITE_FAILURE -> R.string.launch_error_metadata
+    LaunchErrorType.NETWORK_UNAVAILABLE -> R.string.launch_error_network
+    LaunchErrorType.HTTP_FAILURE -> R.string.launch_error_http
+    LaunchErrorType.CORRUPTED_DOWNLOAD -> R.string.launch_error_corrupted
     LaunchErrorType.GAME_CRASHED -> R.string.launch_error_crashed
     LaunchErrorType.CANCELLED -> R.string.launch_error_cancelled
     LaunchErrorType.UNKNOWN -> R.string.launch_error_unknown

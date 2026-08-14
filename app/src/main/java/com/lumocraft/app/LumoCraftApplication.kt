@@ -71,6 +71,9 @@ import com.lumocraft.app.domain.performance.PerformanceManager
 import com.lumocraft.app.domain.runtime.RuntimeRepository
 import com.lumocraft.app.domain.update.UpdateRepository
 import com.lumocraft.app.domain.version.VersionRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -142,10 +145,14 @@ class LumoCraftApplication : Application() {
         )
     }
 
-    val versionRepository: VersionRepository by lazy {
+    /**
+     * Concrete repository instance (kept private): exposes startup
+     * recovery of interrupted installs before the UI reads install states.
+     */
+    private val defaultVersionRepository: DefaultVersionRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
-        val downloader = Downloader(client, throughput = throughputTracker)
+        val downloader = Downloader(client, throughput = throughputTracker, logs = launcherLogRepository)
         DefaultVersionRepository(
             manifestService = ManifestService(client),
             installer = VersionInstaller(
@@ -164,10 +171,14 @@ class LumoCraftApplication : Application() {
         )
     }
 
+    val versionRepository: VersionRepository by lazy {
+        defaultVersionRepository
+    }
+
     val loaderRepository: LoaderRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
-        val downloader = Downloader(client, throughput = throughputTracker)
+        val downloader = Downloader(client, throughput = throughputTracker, logs = launcherLogRepository)
         val verificationService = VerificationService(storage)
         val metadataService = FabricMetadataService(client, storage)
         val libraryInstaller = LibraryInstaller(storage, downloader, downloadScheduler)
@@ -203,7 +214,7 @@ class LumoCraftApplication : Application() {
     val runtimeRepository: RuntimeRepository by lazy {
         val client = HttpClient()
         val storage = storageManager
-        val downloader = Downloader(client, throughput = throughputTracker)
+        val downloader = Downloader(client, throughput = throughputTracker, logs = launcherLogRepository)
         val extractor = ArchiveExtractor()
         DefaultRuntimeRepository(
             storage = storage,
@@ -261,7 +272,7 @@ class LumoCraftApplication : Application() {
 
     val launchPipeline: LaunchPipeline by lazy {
         val storage = storageManager
-        val downloader = Downloader(HttpClient(), throughput = throughputTracker)
+        val downloader = Downloader(HttpClient(), throughput = throughputTracker, logs = launcherLogRepository)
         DefaultLaunchPipeline(
             environment = LaunchEnvironment(storage),
             validator = launchValidator,
@@ -301,7 +312,18 @@ class LumoCraftApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        scope.launch { inputManager.initialize() }
+        scope.launch {
+            runCatching { inputManager.initialize() }
+            runCatching { defaultVersionRepository.recoverInterruptedInstalls() }
+                .onFailure { e ->
+                    runCatching {
+                        launcherLogRepository.writeLine(
+                            "[${recoveryTimestamp()}] [${Thread.currentThread().name}] " +
+                                "RECOVERY failed exception=${e.javaClass.name} message=${e.message}"
+                        )
+                    }
+                }
+        }
 
         // Capture uncaught crashes into the launcher log area for later
         // export, then hand off to the platform handler as usual.
@@ -309,6 +331,9 @@ class LumoCraftApplication : Application() {
             CrashLogHandler(storageManager, Thread.getDefaultUncaughtExceptionHandler())
         )
     }
+
+    private fun recoveryTimestamp(): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
 
     /**
      * The launch request carried from the Home screen into the Launch
