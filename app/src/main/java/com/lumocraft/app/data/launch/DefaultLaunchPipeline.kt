@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -41,6 +43,13 @@ import org.json.JSONObject
  * exec'd: Android mounts app-writable storage with `noexec`, so
  * ProcessBuilder on the extracted runtime's bin/java fails with
  * Permission denied.
+ *
+ * Threading: the session runs on Dispatchers.Default, never on the
+ * Android main thread. Every file/JSON/network step uses an explicit
+ * IO dispatcher, and the native JVM handshake is bounded — launcher
+ * start, the JVM startup window (heartbeat + timeout) and the exit-code
+ * poll are all asynchronous with respect to the UI, so a stalled JVM
+ * reports JVM_START_TIMEOUT instead of an ANR.
  *
  * Phase 9: validation is cached through [PerformanceManager.verifier],
  * classpath and launch arguments come from the launch cache when their
@@ -72,7 +81,12 @@ class DefaultLaunchPipeline(
     private val inputConfiguration: () -> com.lumocraft.app.domain.input.InputConfiguration? = { null },
 ) : LaunchPipeline {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /*
+     * Background dispatcher on purpose: the session must never occupy
+     * the Android main thread. State emissions are thread-safe
+     * StateFlow updates; the Compose side collects them on Main.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(LaunchProgress())
     override val state: StateFlow<LaunchProgress> = _state.asStateFlow()
@@ -192,20 +206,75 @@ class DefaultLaunchPipeline(
                 architecture = context.runtime.architecture
             )
 
+            // Bounded native handshake: if the launcher call itself stalls
+            // (e.g. dlopen lock contention), the session reports a timeout
+            // instead of leaving the UI frozen.
             val startNanos = System.nanoTime()
-            process = launcher.start(command)
+            val started = withTimeoutOrNull(NATIVE_START_TIMEOUT_MS) {
+                launcher.start(command)
+            }
             jvmStartMs = elapsedMs(startNanos)
-            _state.value = LaunchProgress(LaunchState.RUNNING, "Minecraft is running")
-            exitCode = process.stream { line -> logs.writeLine(line) }
+            if (started == null) {
+                throw LaunchException(
+                    message = "The JVM did not start within ${NATIVE_START_TIMEOUT_MS / 1000}s. " +
+                        "The runtime may be incompatible with this device.",
+                    type = LaunchErrorType.JVM_START_TIMEOUT
+                )
+            }
+            process = started
+            writeLauncherLine("JLI: launch accepted, waiting for JVM startup")
 
-            if (exitCode == 0) {
-                _state.value = LaunchProgress(LaunchState.FINISHED, "Game closed", exitCode = 0)
-                writeLauncherLine("Process exited cleanly")
-            } else {
-                failure = crashAnalyzer.analyze(exitCode, logs.recentLines())
-                writeLauncherLine("Process exited with code $exitCode")
+            // Startup window and lifetime are separated inside stream():
+            // a 30 s bounded window with a 1 s heartbeat, then an
+            // unbounded wait for the game to exit.
+            exitCode = process.stream(
+                onLine = { line -> logs.writeLine(line) },
+                onHeartbeat = { seconds ->
+                    logs.writeLine("JVM_START_HEARTBEAT elapsed=${seconds}s")
+                },
+                onStarted = {
+                    _state.value = LaunchProgress(LaunchState.RUNNING, "Minecraft is running")
+                }
+            )
+
+            when {
+                exitCode == NativeJvmLauncher.K_START_TIMEOUT -> {
+                    _state.value = LaunchProgress(LaunchState.STOPPING, "Stopping the JVM")
+                    writeLauncherLine(
+                        "JVM_START_TIMEOUT: no JVM output within " +
+                            "${JVM_STARTUP_TIMEOUT_S}s — stopping the JVM"
+                    )
+                    process?.cancel()
+                    // Grace period: System.exit should end the JLI thread
+                    // quickly; a still-running thread means the JVM is
+                    // wedged and the app must be restarted.
+                    val stopped = withContext(Dispatchers.IO) {
+                        launcher.waitForExit(CANCEL_GRACE_MS) != NativeJvmLauncher.K_EXIT_TIMEOUT
+                    }
+                    failure = LaunchFailure(
+                        type = LaunchErrorType.JVM_START_TIMEOUT,
+                        detail = if (stopped) {
+                            "The JVM produced no output within ${JVM_STARTUP_TIMEOUT_S}s " +
+                                "of starting and was stopped. The runtime cannot run " +
+                                "in-process on this device."
+                        } else {
+                            "The JVM did not respond within ${JVM_STARTUP_TIMEOUT_S}s and " +
+                                "could not be stopped. Restart the app before launching again."
+                        }
+                    )
+                    writeLauncherLine("Launch failed: ${failure.detail}")
+                }
+                exitCode == 0 -> {
+                    _state.value = LaunchProgress(LaunchState.FINISHED, "Game closed", exitCode = 0)
+                    writeLauncherLine("Process exited cleanly")
+                }
+                else -> {
+                    failure = crashAnalyzer.analyze(exitCode, logs.recentLines())
+                    writeLauncherLine("Process exited with code $exitCode")
+                }
             }
         } catch (cancelled: CancellationException) {
+            _state.value = LaunchProgress(LaunchState.STOPPING, "Stopping the JVM")
             failure = LaunchFailure(LaunchErrorType.CANCELLED, "Launch cancelled by user")
             writeLauncherLine("Launch cancelled")
             process?.cancel()
@@ -219,6 +288,7 @@ class DefaultLaunchPipeline(
                 else -> LaunchFailure(LaunchErrorType.UNKNOWN, error.message)
             }
             writeLauncherLine("Launch failed: ${error.message}")
+            _state.value = LaunchProgress(LaunchState.STOPPING, "Stopping the JVM")
             process?.cancel()
         } finally {
             val totalMs = elapsedMs(sessionStartNanos)
@@ -251,6 +321,9 @@ class DefaultLaunchPipeline(
             if (failure != null) {
                 _state.value = LaunchProgress(LaunchState.FAILED, null, exitCode, failure)
             }
+            // Reap the JLI thread and reset the native launch state so the
+            // next session can start; a no-op while the JVM still runs.
+            process?.recycle()
             job = null
         }
     }
@@ -266,6 +339,8 @@ class DefaultLaunchPipeline(
         loaderConfig: LoaderLaunchConfiguration,
         logs: LauncherLogRepository,
     ): LaunchArguments {
+        val startedAt = System.nanoTime()
+        logs.writeLine("ARGUMENTS_RESOLVE_STARTED elapsed=0ms")
         val resolvedConfig = performance.resolveJvmConfiguration(context.jvmConfiguration)
         val fingerprint = argumentFingerprint(
             context = context,
@@ -276,12 +351,14 @@ class DefaultLaunchPipeline(
             loaderConfig = loaderConfig
         )
         val cache = performance.cache()
+        logs.writeLine("ARGUMENTS_CACHE_LOOKUP elapsed=${elapsedMs(startedAt)}ms")
         val cached = cache.getEntry(context.versionId)
             ?.takeIf { it.launchArgumentsFingerprint == fingerprint && it.launchArgumentsJson != null }
         val decoded = cached?.let { decodeArguments(it.launchArgumentsJson!!) }
         if (decoded != null) {
             cache.recordHit()
             logs.logCacheEvent("arguments", true, context.versionId)
+            logs.writeLine("ARGUMENTS_RESOLVE_COMPLETED elapsed=${elapsedMs(startedAt)}ms (cache hit)")
             return decoded
         }
         if (cached != null) {
@@ -290,6 +367,7 @@ class DefaultLaunchPipeline(
         }
         cache.recordMiss()
         logs.logCacheEvent("arguments", false, context.versionId)
+        logs.writeLine("ARGUMENTS_VERSION_JSON elapsed=${elapsedMs(startedAt)}ms")
         val args = argumentBuilder.build(
             context = context.copy(jvmConfiguration = resolvedConfig),
             classpath = classpath,
@@ -298,13 +376,21 @@ class DefaultLaunchPipeline(
             jniEnvironment = jniEnvironment,
             rendererProfile = rendererProfile
         ).getOrElse { throw it }
+        logs.writeLine(
+            "ARGUMENTS_LIBRARY_RESOLUTION elapsed=${elapsedMs(startedAt)}ms " +
+                "(classpath ${classpath.split(File.pathSeparator).size} entries)"
+        )
+        logs.writeLine("ARGUMENTS_GAME_ARGUMENTS elapsed=${elapsedMs(startedAt)}ms (${args.gameArguments.size} args)")
+        logs.writeLine("ARGUMENTS_JVM_ARGUMENTS elapsed=${elapsedMs(startedAt)}ms (${args.jvmArguments.size} args)")
         val base = cache.getEntry(context.versionId) ?: LaunchCacheEntry(context.versionId)
+        logs.writeLine("ARGUMENTS_CACHE_WRITE elapsed=${elapsedMs(startedAt)}ms")
         cache.putEntry(
             base.copy(
                 launchArgumentsFingerprint = fingerprint,
                 launchArgumentsJson = encodeArguments(args)
             )
         )
+        logs.writeLine("ARGUMENTS_RESOLVE_COMPLETED elapsed=${elapsedMs(startedAt)}ms")
         return args
     }
 
@@ -438,6 +524,15 @@ class DefaultLaunchPipeline(
 
     private companion object {
         const val MAX_REPORTED_LIBS = 10
+
+        /** Bounds the native launcher call itself (dlopen handshake). */
+        const val NATIVE_START_TIMEOUT_MS = 30_000L
+
+        /** Bounds JVM startup; matches JvmProcessHandle's window. */
+        const val JVM_STARTUP_TIMEOUT_S = 30
+
+        /** Grace after cancel() before declaring the JVM wedged. */
+        const val CANCEL_GRACE_MS = 5_000L
     }
 }
 

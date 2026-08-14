@@ -275,6 +275,7 @@
     <string name="launch_stage_classpath">Building classpath</string>
     <string name="launch_stage_arguments">Building launch arguments</string>
     <string name="launch_stage_starting">Starting Java</string>
+    <string name="launch_stage_stopping">Stopping the JVM</string>
     <string name="launch_stage_running">Minecraft is running</string>
     <string name="launch_stage_finished">Game closed</string>
     <string name="launch_stage_failed">Launch failed</string>
@@ -302,6 +303,7 @@
     <string name="launch_error_http">The download server returned an error. Retry in a moment.</string>
     <string name="launch_error_corrupted">A downloaded file is corrupted. Reinstall or repair it.</string>
     <string name="launch_error_crashed">Minecraft crashed. Check the console and session log for details.</string>
+    <string name="launch_error_jvm_timeout">The Java virtual machine did not finish starting. The runtime may not support in-process launch on this device.</string>
     <string name="launch_error_cancelled">Launch was cancelled.</string>
     <string name="launch_error_unknown">An unexpected error occurred.</string>
 

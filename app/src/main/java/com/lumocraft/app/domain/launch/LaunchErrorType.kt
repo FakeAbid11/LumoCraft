@@ -26,6 +26,7 @@ enum class LaunchErrorType {
     HTTP_FAILURE,
     CORRUPTED_DOWNLOAD,
     GAME_CRASHED,
+    JVM_START_TIMEOUT,
     CANCELLED,
     UNKNOWN
 }

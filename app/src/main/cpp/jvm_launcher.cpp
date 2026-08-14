@@ -37,6 +37,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <climits>
 #include <string>
 #include <vector>
 
@@ -71,6 +72,10 @@ constexpr int kDlopenFailed = -3;
 constexpr int kSymbolMissing = -4;
 constexpr int kSetupFailed = -5;
 
+/* waitForExit() sentinel: the JLI thread was still running at the
+ * deadline. Kotlin uses it to bound JVM startup instead of waiting. */
+constexpr int kExitTimeout = -6;
+
 /** Everything the JLI thread needs; owned by the thread, deleted on exit. */
 struct LaunchState {
     JLI_LaunchFn jli_launch = nullptr;
@@ -87,8 +92,21 @@ std::atomic<bool> g_thread_done{false};
 std::atomic<int> g_exit_code{1};
 pthread_t g_jli_thread{};
 
+/* Written by launch() before it returns kOk, read by cancel(); guarded
+ * so a stray cancel can never read a torn path. */
+pthread_mutex_t g_libjvm_path_mutex = PTHREAD_MUTEX_INITIALIZER;
 std::string g_libjvm_path;
+
+/* lastError() detail; guarded because launch() (IO thread) writes it
+ * while the UI thread may read it via the error path. */
+pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
 std::string g_last_error;
+
+long long nowNanos() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
 
 std::string jstringToString(JNIEnv* env, jstring str) {
     if (str == nullptr) return {};
@@ -127,7 +145,9 @@ int fdFromJobject(JNIEnv* env, jobject fdObj) {
 }
 
 void setLastError(const std::string& message) {
+    pthread_mutex_lock(&g_error_mutex);
     g_last_error = message;
+    pthread_mutex_unlock(&g_error_mutex);
     LOGE("%s", message.c_str());
 }
 
@@ -228,7 +248,11 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_launch(
 
     // 3. JLI resolves the JRE home from libjli.so's location and loads
     //    lib/server/libjvm.so itself; remember the path for cancel().
-    g_libjvm_path = java_home + "/lib/server/libjvm.so";
+    {
+        pthread_mutex_lock(&g_libjvm_path_mutex);
+        g_libjvm_path = java_home + "/lib/server/libjvm.so";
+        pthread_mutex_unlock(&g_libjvm_path_mutex);
+    }
 
     // 4. Apply the process environment (JAVA_HOME, LD_LIBRARY_PATH, ...).
     const std::vector<std::string> env_vars = jarrayToStrings(env, environment);
@@ -297,14 +321,21 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_launch(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_lumocraft_app_data_launch_NativeJvmLauncher_exitCode(
-    JNIEnv*, jobject) {
+Java_com_lumocraft_app_data_launch_NativeJvmLauncher_waitForExit(
+    JNIEnv*, jobject, jlong timeoutMillis) {
     if (!g_launched.load()) {
         setLastError("No JVM launch in progress");
-        return -1;
+        return kSetupFailed;
     }
-    if (!g_thread_done.load()) {
-        pthread_join(g_jli_thread, nullptr);
+    // Poll instead of pthread_join: the caller can bound the wait (JVM
+    // startup window, cancellation grace) and the UI path never blocks
+    // on a thread that may be wedged inside HotSpot.
+    const long long deadline = (timeoutMillis <= 0)
+        ? LLONG_MAX
+        : nowNanos() + timeoutMillis * 1000000LL;
+    while (!g_thread_done.load()) {
+        if (nowNanos() >= deadline) return kExitTimeout;
+        usleep(50 * 1000);
     }
     const int code = g_exit_code.load();
     LOGI("JVM exit code %d", code);
@@ -314,7 +345,10 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_exitCode(
 JNIEXPORT jstring JNICALL
 Java_com_lumocraft_app_data_launch_NativeJvmLauncher_lastError(
     JNIEnv* env, jobject) {
-    return env->NewStringUTF(g_last_error.c_str());
+    pthread_mutex_lock(&g_error_mutex);
+    const std::string copy = g_last_error;
+    pthread_mutex_unlock(&g_error_mutex);
+    return env->NewStringUTF(copy.c_str());
 }
 
 JNIEXPORT void JNICALL
@@ -349,13 +383,13 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_cancel(
     JNIEnv* jvm_env = nullptr;
     const bool attached = vm->AttachCurrentThread(&jvm_env, nullptr) == JNI_OK &&
                           jvm_env != nullptr;
-#else
+    #else
     // Desktop JDK jni.h declares AttachCurrentThread(void**, void*).
     void* env_ptr = nullptr;
     const bool attached = vm->AttachCurrentThread(&env_ptr, nullptr) == JNI_OK &&
                           env_ptr != nullptr;
     JNIEnv* jvm_env = static_cast<JNIEnv*>(env_ptr);
-#endif
+    #endif
     if (!attached) {
         LOGW("cancel: AttachCurrentThread failed");
         return;
@@ -371,4 +405,22 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_cancel(
         jvm_env->DeleteLocalRef(system);
     }
     vm->DetachCurrentThread();
+}
+
+JNIEXPORT void JNICALL
+Java_com_lumocraft_app_data_launch_NativeJvmLauncher_recycleLaunch(
+    JNIEnv*, jobject) {
+    // Join only a thread that has already exited (the JVM is gone), then
+    // let the next session launch again. Never called while the JVM
+    // thread is still running: a wedged JVM cannot be unloaded safely, so
+    // g_launched stays set and Play reports "already in progress" until
+    // the app is restarted.
+    if (!g_thread_done.load()) {
+        LOGW("recycleLaunch: JVM thread still running, state kept");
+        return;
+    }
+    pthread_join(g_jli_thread, nullptr);
+    g_launched.store(false);
+    g_cancel_requested.store(false);
+    LOGI("recycleLaunch: JLI thread reaped, launch state reset");
 }

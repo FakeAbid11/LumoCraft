@@ -12,12 +12,16 @@
  * com.lumocraft.app.data.launch):
  *
  *   launch(javaHome, workingDirectory, environment, argv, stdoutFd) -> int
- *   exitCode()  -> int   (blocks until the JVM exits)
+ *   waitForExit(timeoutMillis) -> int  (bounded poll; kExitTimeout = -6)
  *   lastError() -> String
  *   cancel()    -> void  (best-effort System.exit inside the game JVM)
+ *   recycleLaunch() -> void  (reap the JLI thread after exit; reset state)
  *
- * All functions are member externals on the singleton class, so the JNI
- * entry points receive an unused jobject `this`.
+ * waitForExit never joins the JLI thread: it polls a completion flag, so
+ * the caller can time out (kExitTimeout) and keep the app responsive.
+ * The thread is joined only in recycleLaunch, after it has already
+ * exited. All functions are member externals on the singleton class, so
+ * the JNI entry points receive an unused jobject `this`.
  */
 #ifndef LUMOCRAFT_JVM_LAUNCHER_H
 #define LUMOCRAFT_JVM_LAUNCHER_H
@@ -37,9 +41,14 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_launch(
     jobjectArray argv,
     jobject stdoutFd);
 
+/*
+ * Polls for JLI_Launch completion. Returns the JVM exit code when the
+ * JLI thread finished within timeoutMillis (<= 0 waits indefinitely),
+ * otherwise kExitTimeout (-6). Never blocks the caller in pthread_join.
+ */
 JNIEXPORT jint JNICALL
-Java_com_lumocraft_app_data_launch_NativeJvmLauncher_exitCode(
-    JNIEnv* env, jobject thiz);
+Java_com_lumocraft_app_data_launch_NativeJvmLauncher_waitForExit(
+    JNIEnv* env, jobject thiz, jlong timeoutMillis);
 
 JNIEXPORT jstring JNICALL
 Java_com_lumocraft_app_data_launch_NativeJvmLauncher_lastError(
@@ -47,6 +56,16 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_lastError(
 
 JNIEXPORT void JNICALL
 Java_com_lumocraft_app_data_launch_NativeJvmLauncher_cancel(
+    JNIEnv* env, jobject thiz);
+
+/*
+ * Reaps the JLI thread once it has exited (pthread_join of a finished
+ * thread) and resets the launch state so a new session can start. No-op
+ * while the JVM thread is still running: a wedged JVM must be handled by
+ * restarting the app, never by allowing a second in-process JVM.
+ */
+JNIEXPORT void JNICALL
+Java_com_lumocraft_app_data_launch_NativeJvmLauncher_recycleLaunch(
     JNIEnv* env, jobject thiz);
 
 #ifdef __cplusplus

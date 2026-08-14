@@ -251,6 +251,7 @@ private fun stageLabel(state: LaunchState): Int = when (state) {
     LaunchState.BUILDING_ARGUMENTS -> R.string.launch_stage_arguments
     LaunchState.STARTING_JAVA -> R.string.launch_stage_starting
     LaunchState.RUNNING -> R.string.launch_stage_running
+    LaunchState.STOPPING -> R.string.launch_stage_stopping
     LaunchState.FINISHED -> R.string.launch_stage_finished
     LaunchState.FAILED -> R.string.launch_stage_failed
     LaunchState.IDLE -> R.string.launch_stage_idle
@@ -276,6 +277,7 @@ private fun errorLabel(type: LaunchErrorType): Int = when (type) {
     LaunchErrorType.HTTP_FAILURE -> R.string.launch_error_http
     LaunchErrorType.CORRUPTED_DOWNLOAD -> R.string.launch_error_corrupted
     LaunchErrorType.GAME_CRASHED -> R.string.launch_error_crashed
+    LaunchErrorType.JVM_START_TIMEOUT -> R.string.launch_error_jvm_timeout
     LaunchErrorType.CANCELLED -> R.string.launch_error_cancelled
     LaunchErrorType.UNKNOWN -> R.string.launch_error_unknown
 }

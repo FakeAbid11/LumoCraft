@@ -16,7 +16,8 @@ data class LaunchProgress(
             LaunchState.BUILDING_CLASSPATH,
             LaunchState.BUILDING_ARGUMENTS,
             LaunchState.STARTING_JAVA,
-            LaunchState.RUNNING
+            LaunchState.RUNNING,
+            LaunchState.STOPPING
         )
     }
 }

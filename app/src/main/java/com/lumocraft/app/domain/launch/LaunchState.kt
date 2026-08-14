@@ -9,6 +9,7 @@ enum class LaunchState {
     BUILDING_ARGUMENTS,
     STARTING_JAVA,
     RUNNING,
+    STOPPING,
     FINISHED,
     FAILED
 }

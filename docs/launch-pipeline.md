@@ -77,6 +77,48 @@ is logged to logcat and the session log; missing libraries, missing
 symbols or an architecture mismatch produce a typed, user-friendly
 `LaunchException` instead of a crash.
 
+## Threading, timeouts and heartbeats
+
+The session runs on `Dispatchers.Default`, never on the Android main
+thread (the original ANR: the pipeline ran on a `Dispatchers.Main
+immediate` scope, and the unbounded native handshake — `pthread_join`
+inside `exitCode()`, no timeouts anywhere — could stall the UI for
+minutes). All file/JSON/network steps use an explicit IO dispatcher and
+every native call is bounded or polled:
+
+- `NativeJvmLauncher.start()` (dlopen + handshake) is wrapped in
+  `withTimeoutOrNull(NATIVE_START_TIMEOUT_MS)` (30 s) → a stall reports
+  `JVM_START_TIMEOUT` instead of an ANR.
+- `JvmProcessHandle.stream()` separates JVM startup from JVM lifetime:
+  the first 30 s are the bounded startup window. A `JVM_START_HEARTBEAT
+  elapsed=Ns` line is logged every second so liveness is visible. If the
+  JLI thread is still running after the window with no output at all,
+  the JVM is declared wedged and the session stops it
+  (`JVM_START_TIMEOUT`, sentinel `K_START_TIMEOUT = -7`).
+- Once started, the game runs until exit — unbounded in total, but
+  polled in 250 ms cancellable slices (`waitForExit` never joins, so a
+  wedged JVM can never block the session from being stopped).
+- `STOPPING` is a real state: after `cancel()` the pipeline waits
+  `CANCEL_GRACE_MS` (5 s) for the JLI thread to finish; if it does not,
+  the JVM is wedged and the user must restart the app.
+- `recycleLaunch()` reaps the finished JLI thread and resets the native
+  launch state so the next session can start (a no-op while the JVM
+  still runs).
+
+Native exit-code sentinels: `kOk = 0`, launch errors `-1..-5`,
+`kExitTimeout = -6` (thread still running). Every phase of argument
+resolution logs `ARGUMENTS_*` markers with elapsed milliseconds.
+
+## Runtime viability caveat
+
+The bundled Temurin JRE is a glibc build (from api.adoptium.net), but
+Android's bionic cannot resolve glibc sonames (`libc.so.6`, `libm.so.6`,
+...). The in-process launcher therefore only works with a bionic-linked
+JRE (e.g. PojavLauncher's lwjgl-bridge JRE builds) or when a glibc
+userspace is bundled into `LD_LIBRARY_PATH`. With the current runtime the
+JVM reports `JVM_START_TIMEOUT` or a launcher error at startup; the
+in-process architecture is otherwise proven viable on Android.
+
 ## Progress and cancellation
 
 `run()` returns `Flow<LaunchProgress>` (a `channelFlow`). Every stage
@@ -84,7 +126,9 @@ emits `send()` from wherever the work happens (including worker
 dispatchers), so the collector on the main thread never sees a flow
 invariant violation. Cancelling the collection cancels the whole launch;
 the in-process JVM is then stopped gracefully through
-`JvmProcessHandle.cancel()` (see above).
+`JvmProcessHandle.cancel()` (see above). Both `cancel()` and
+`recycle()` run under `NonCancellable` so they complete even inside a
+cancelled coroutine.
 
 ## Validation report
 
