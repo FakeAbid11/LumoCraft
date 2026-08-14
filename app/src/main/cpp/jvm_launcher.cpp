@@ -344,9 +344,19 @@ Java_com_lumocraft_app_data_launch_NativeJvmLauncher_cancel(
         LOGW("cancel: HotSpot VM not created yet");
         return;
     }
+    #if defined(__ANDROID__)
+    // The NDK's jni.h declares AttachCurrentThread(JNIEnv**, void*).
     JNIEnv* jvm_env = nullptr;
-    if (vm->AttachCurrentThread(reinterpret_cast<void**>(&jvm_env), nullptr) != JNI_OK ||
-        jvm_env == nullptr) {
+    const bool attached = vm->AttachCurrentThread(&jvm_env, nullptr) == JNI_OK &&
+                          jvm_env != nullptr;
+#else
+    // Desktop JDK jni.h declares AttachCurrentThread(void**, void*).
+    void* env_ptr = nullptr;
+    const bool attached = vm->AttachCurrentThread(&env_ptr, nullptr) == JNI_OK &&
+                          env_ptr != nullptr;
+    JNIEnv* jvm_env = static_cast<JNIEnv*>(env_ptr);
+#endif
+    if (!attached) {
         LOGW("cancel: AttachCurrentThread failed");
         return;
     }

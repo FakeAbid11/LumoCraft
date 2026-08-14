@@ -138,7 +138,7 @@ class NativeJvmLauncher(private val logs: LauncherLogRepository) {
             }
 
             logs.writeLine("JLI: dlopen ok, JLI_Launch resolved, JVM thread started")
-            JvmProcessHandle(this, pipe[0])
+            JvmProcessHandle(this@NativeJvmLauncher, pipe[0])
         }
 
     /**
