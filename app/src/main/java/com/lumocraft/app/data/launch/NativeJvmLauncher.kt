@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -115,14 +116,18 @@ class JvmProcessHandle internal constructor(
         // cancellable so a wedged JVM can never freeze or block the
         // session from being stopped.
         onStarted()
+        val exit = waitForLifetimeExit()
+        pumpShutdown()
+        return@coroutineScope exit
+    }
+
+    /** Polls for JVM exit in short, cancellable slices; never joins. */
+    private suspend fun waitForLifetimeExit(): Int {
         while (true) {
             val exit = withContext(Dispatchers.IO) {
                 launcher.waitForExit(timeoutMillis = LIFETIME_POLL_MS)
             }
-            if (exit != NativeJvmLauncher.K_EXIT_TIMEOUT) {
-                pumpShutdown()
-                return@coroutineScope exit
-            }
+            if (exit != NativeJvmLauncher.K_EXIT_TIMEOUT) return exit
             delay(LIFETIME_POLL_MS)
         }
     }
