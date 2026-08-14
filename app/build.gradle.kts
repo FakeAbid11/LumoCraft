@@ -127,12 +127,39 @@ android {
     namespace = "com.lumocraft.app"
     compileSdk = 35
 
+    /**
+     * The in-process JVM launcher (app/src/main/cpp) is the only launch
+     * path: Android mounts app-writable directories with `noexec`, so
+     * exec'ing the extracted runtime's bin/java fails with Permission
+     * denied. The native library builds with the NDK and loads the
+     * runtime's libjli.so at launch time instead. ABIs are limited to
+     * the architectures the runtimes support (see RuntimeArchitecture).
+     */
+    ndkVersion = "27.0.12077973"
+
     defaultConfig {
         applicationId = "com.lumocraft.app"
         minSdk = 26
         targetSdk = 35
         versionCode = generatedVersionCode
         versionName = generatedVersionName
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     signingConfigs {

@@ -30,7 +30,10 @@ DefaultLaunchPipeline.run()
   |         --assetIndex, --assetsDir, --gameDir, --width/height)
   |       + loader (Fabric) args
   |
-  |-- JavaLauncher.spawn()            bin/java with the built command
+  |-- NativeJvmLauncher.start()       in-process JVM, no exec
+  |       dlopen(<runtime>/lib/jli/libjli.so)
+  |       JLI_Launch on a native thread
+  |       stdout/stderr piped into the session log
   |       + env: JAVA_HOME, LD_LIBRARY_PATH, LWJGL paths, XDG dirs
   |
   |-- live log streaming              console SharedFlow + session file
@@ -41,13 +44,47 @@ DefaultLaunchPipeline.run()
                                -> typed LaunchFailure shown to the user
 ```
 
+## Native JVM launcher (noexec)
+
+Android mounts app-writable directories with `noexec`, so executing the
+extracted runtime's `bin/java` always fails with `error=13 (Permission
+denied)` regardless of file permissions — `chmod` cannot fix a mount
+option. Shared libraries are **not** affected by `noexec`, so the JVM is
+loaded in-process through JNI instead:
+
+1. `NativeJvmLauncher` resolves `<runtime>/lib/jli/libjli.so`
+   (fallbacks: flat `lib/libjli.so` for Microsoft-style builds,
+   `lib/<arch>/libjli.so` for legacy JDK 8 layouts) and
+   preflights `lib/server/libjvm.so`, `lib/modules` and `lib/jvm.cfg`
+   plus a runtime/device architecture match.
+2. The native library (app/src/main/cpp, built by CMake) `dlopen`s
+   `libjli.so`, resolves `JLI_Launch` (the JDK 9+ launcher entry point)
+   and redirects fd 1/2 into a pipe Kotlin created via `Os.pipe()`.
+3. `JLI_Launch` runs on a dedicated pthread with the full command line
+   `[java, -D..., -cp ..., MainClass, game args]`. JLI derives the JRE
+   home from `libjli.so`'s own location (`dladdr`) and loads
+   `lib/server/libjvm.so` itself; `JAVA_HOME` and a correctly prefixed
+   `LD_LIBRARY_PATH` keep it from trying to re-exec.
+4. When the game exits, `JLI_Launch` returns the exit code, the process
+   output is restored and the pipe reaches EOF; the pipeline streams
+   those lines into the session log and reports the code as before.
+5. Cancellation asks the game JVM to exit through its own JNI invocation
+   API (`JNI_GetCreatedJavaVMs` + `System.exit(0)`), so shutdown hooks
+   run instead of killing the process.
+
+Every step (library path, `dlopen` result, symbol resolution, exit code)
+is logged to logcat and the session log; missing libraries, missing
+symbols or an architecture mismatch produce a typed, user-friendly
+`LaunchException` instead of a crash.
+
 ## Progress and cancellation
 
 `run()` returns `Flow<LaunchProgress>` (a `channelFlow`). Every stage
 emits `send()` from wherever the work happens (including worker
 dispatchers), so the collector on the main thread never sees a flow
-invariant violation. Cancelling the collection cancels the whole launch
-(the child process is stopped with the coroutine's job).
+invariant violation. Cancelling the collection cancels the whole launch;
+the in-process JVM is then stopped gracefully through
+`JvmProcessHandle.cancel()` (see above).
 
 ## Validation report
 

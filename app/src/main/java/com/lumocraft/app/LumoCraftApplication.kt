@@ -15,11 +15,11 @@ import com.lumocraft.app.data.launch.ClasspathBuilder
 import com.lumocraft.app.data.launch.ClientJarManager
 import com.lumocraft.app.data.launch.CrashAnalyzer
 import com.lumocraft.app.data.launch.DefaultLaunchPipeline
-import com.lumocraft.app.data.launch.JavaLauncher
 import com.lumocraft.app.data.launch.LaunchArgumentBuilder
 import com.lumocraft.app.data.launch.LaunchEnvironment
 import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.data.launch.LaunchValidator
+import com.lumocraft.app.data.launch.NativeJvmLauncher
 import com.lumocraft.app.data.loader.CompositeLoaderLaunchConfigurator
 import com.lumocraft.app.data.loader.DefaultLoaderRepository
 import com.lumocraft.app.data.loader.FabricInstaller
@@ -280,7 +280,7 @@ class LumoCraftApplication : Application() {
             argumentBuilder = LaunchArgumentBuilder(storage),
             clientJarManager = ClientJarManager(storage, downloader),
             nativeRuntimeManager = nativeRuntimeManager,
-            launcher = JavaLauncher(),
+            launcher = NativeJvmLauncher(launcherLogRepository),
             crashAnalyzer = CrashAnalyzer(),
             logs = launcherLogRepository,
             performance = performanceManager,

@@ -33,9 +33,14 @@ import org.json.JSONObject
  * Reference [LaunchPipeline]: validates, prepares (including native
  * libraries through [NativeRuntimeManager]), classpaths, builds
  * arguments with the JNI environment and renderer profile injected,
- * spawns the Java process and streams its output into the session log.
- * Any terminal state leaves the session log file on disk for the
- * "Open logs" action.
+ * starts the game JVM in-process through [NativeJvmLauncher] and streams
+ * its output into the session log. Any terminal state leaves the session
+ * log file on disk for the "Open logs" action.
+ *
+ * The JVM is loaded through JNI (dlopen(libjli.so) + JLI_Launch), never
+ * exec'd: Android mounts app-writable storage with `noexec`, so
+ * ProcessBuilder on the extracted runtime's bin/java fails with
+ * Permission denied.
  *
  * Phase 9: validation is cached through [PerformanceManager.verifier],
  * classpath and launch arguments come from the launch cache when their
@@ -49,7 +54,7 @@ class DefaultLaunchPipeline(
     private val argumentBuilder: LaunchArgumentBuilder,
     private val clientJarManager: ClientJarManager,
     private val nativeRuntimeManager: NativeRuntimeManager,
-    private val launcher: JavaLauncher,
+    private val launcher: NativeJvmLauncher,
     private val crashAnalyzer: CrashAnalyzer,
     private val logs: LauncherLogRepository,
     private val performance: PerformanceManager,
@@ -98,7 +103,7 @@ class DefaultLaunchPipeline(
         writeLauncherLine("Session started: ${context.account.username} on ${context.versionId}")
         writeLauncherLine("Session log: ${sessionFile.absolutePath}")
 
-        var process: JavaProcessHandle? = null
+        var process: JvmProcessHandle? = null
         var failure: LaunchFailure? = null
         var exitCode: Int? = null
         var validationMs = 0L
@@ -179,11 +184,12 @@ class DefaultLaunchPipeline(
             writeLauncherLine("JVM args: ${finalArgs.jvmArguments.joinToString(" ")}")
             writeLauncherLine("Game args: ${finalArgs.gameArguments.joinToString(" ")}")
 
-            val command = JavaCommand(
-                executable = File(javaHome, "bin/java"),
+            val command = JvmLaunchCommand(
+                javaHome = javaHome,
                 arguments = finalArgs.jvmArguments + finalArgs.mainClass + finalArgs.gameArguments,
                 workingDirectory = context.gameDirectory,
-                environment = environment.buildProcessEnvironment(javaHome)
+                environment = environment.buildProcessEnvironment(javaHome),
+                architecture = context.runtime.architecture
             )
 
             val startNanos = System.nanoTime()

@@ -68,10 +68,16 @@ HomeScreen -> LaunchViewModel -> DefaultLaunchPipeline.run()
    |-- classpath resolution (leaf-first inheritsFrom chain)
    |-- native extraction (NativeRuntimeManager)
    |-- JVM + game argument building (LaunchArgumentBuilder)
-   |-- spawn bin/java process (JavaLauncher)
-   |-- stream stdout/stderr to the console + session log
+   |-- in-process JVM start (NativeJvmLauncher: dlopen(libjli.so) + JLI_Launch)
+   |-- stream the JVM's stdout/stderr into the console + session log
    `-- on non-zero exit: CrashAnalyzer maps the log tail to a typed failure
 ```
+
+The game JVM runs inside the launcher process: Android mounts
+app-writable storage with `noexec`, so exec'ing the runtime's `bin/java`
+is impossible; instead the runtime's `libjli.so` is loaded through JNI
+and `JLI_Launch` starts the JVM on a native thread (see
+docs/launch-pipeline.md).
 
 Details: docs/launch-pipeline.md
 
