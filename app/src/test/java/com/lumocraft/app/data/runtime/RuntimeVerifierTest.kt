@@ -98,15 +98,25 @@ class RuntimeVerifierTest {
         val report = verifier.verify(info)
         assertFalse(report.serverOk)
         assertFalse(report.ok)
-        assertTrue("lib/server/libjvm.so" in report.missingFiles)
+        assertTrue("lib/{server,client}/libjvm.so" in report.missingFiles)
     }
 
     @Test
-    fun `missing jmods fails the runtime`() = runBlocking {
+    fun `client-only VM library verifies ok`() = runBlocking {
+        val (root, info) = fakeRuntime(withServer = false)
+        File(root, "lib/client").mkdirs()
+        File(root, "lib/client/libjvm.so").writeText("so")
+        val report = verifier.verify(info)
+        assertTrue(report.serverOk)
+        assertTrue(report.ok)
+    }
+
+    @Test
+    fun `missing jmods still verifies ok (JRE has none)`() = runBlocking {
         val (_, info) = fakeRuntime(withJmods = false)
         val report = verifier.verify(info)
-        assertFalse(report.jmodsOk)
-        assertFalse(report.ok)
+        assertTrue(report.jmodsOk)
+        assertTrue(report.ok)
     }
 
     @Test

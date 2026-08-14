@@ -43,8 +43,22 @@ object AppConfig {
     /** Bandwidth estimation window for adaptive concurrency. */
     const val THROUGHPUT_WINDOW_MS = 10_000L
 
-    /** Base URL for Java runtime archives (placeholder; swap for a real mirror). */
-    const val RUNTIME_BASE_URL = "https://api.adoptium.net/v3/binary/latest/"
+    /**
+     * Android/Bionic-compatible OpenJDK 17 runtime (PojavLauncher multiarch build).
+     *
+     * A standard desktop Linux (glibc) JDK — e.g. from Adoptium — cannot be
+     * dlopen'd on Android: its libjli.so has a hard dependency on "libdl.so.2",
+     * which Bionic never provides (Bionic folded libdl into libc and does not
+     * version it), so the load fails before the JVM starts. The runtime must
+     * therefore be an OpenJDK build linked against Bionic. These assets are
+     * per-architecture .tar.xz JREs.
+     */
+    const val RUNTIME_JRE17_BASE_URL =
+        "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/" +
+            "releases/download/jre17-ec28559/"
+    const val RUNTIME_JRE17_ARM64 = "jre17-arm64-20210825-release.tar.xz"
+    const val RUNTIME_JRE17_ARM = "jre17-arm-20210914-release.tar.xz"
+    const val RUNTIME_JRE17_X86_64 = "jre17-x86_64-20210825-release.tar.xz"
 
     /** Update channel: GitHub releases for this project. */
     const val GITHUB_OWNER = "FakeAbid11"

@@ -229,6 +229,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.commons.compress)
+    implementation(libs.tukaani.xz)
     implementation(libs.androidx.profileinstaller)
 
     debugImplementation(libs.androidx.compose.ui.tooling)

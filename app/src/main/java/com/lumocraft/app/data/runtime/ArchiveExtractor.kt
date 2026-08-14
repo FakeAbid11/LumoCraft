@@ -5,6 +5,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -12,9 +13,10 @@ import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 
 /**
- * Streaming archive extractor supporting tar.gz and zip.
+ * Streaming archive extractor supporting tar.gz, tar.xz and zip.
  *
  * - streams entry-by-entry (never loads the whole archive into RAM)
  * - sanitizes every entry path, rejecting traversal ("..") and absolute paths
@@ -38,6 +40,8 @@ class ArchiveExtractor {
             when {
                 archive.name.endsWith(".tar.gz") || archive.name.endsWith(".tgz") ->
                     extractTarGz(archive, destinationDir, onProgress)
+                archive.name.endsWith(".tar.xz") || archive.name.endsWith(".txz") ->
+                    extractTarXz(archive, destinationDir, onProgress)
                 archive.name.endsWith(".zip") ->
                     extractZip(archive, destinationDir, onProgress)
                 else -> throw IOException("Unsupported archive format: ${archive.name}")
@@ -69,13 +73,31 @@ class ArchiveExtractor {
         archive: File,
         destinationDir: File,
         onProgress: suspend (Float) -> Unit,
+    ) = extractTar(archive, destinationDir, onProgress) { GzipCompressorInputStream(it) }
+
+    private suspend fun extractTarXz(
+        archive: File,
+        destinationDir: File,
+        onProgress: suspend (Float) -> Unit,
+    ) = extractTar(archive, destinationDir, onProgress) { XZCompressorInputStream(it) }
+
+    /**
+     * Extracts a compressed tar archive. [decompress] wraps the buffered
+     * file stream in the appropriate compressor (gzip, xz, …); the tar
+     * handling below is identical for every compression scheme.
+     */
+    private suspend fun extractTar(
+        archive: File,
+        destinationDir: File,
+        onProgress: suspend (Float) -> Unit,
+        decompress: (InputStream) -> InputStream,
     ) {
         val totalBytes = archive.length()
         var processedBytes = 0L
         FileInputStream(archive).use { fileInput ->
             BufferedInputStream(fileInput).use { buffered ->
-                GzipCompressorInputStream(buffered).use { gzip ->
-                    TarArchiveInputStream(gzip).use { tar ->
+                decompress(buffered).use { decompressed ->
+                    TarArchiveInputStream(decompressed).use { tar ->
                         while (true) {
                             coroutineContext.ensureActive()
                             val entry = tar.nextEntry ?: break

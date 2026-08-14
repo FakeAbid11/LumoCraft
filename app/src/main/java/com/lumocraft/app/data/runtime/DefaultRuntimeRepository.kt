@@ -71,12 +71,17 @@ class DefaultRuntimeRepository(
             val hasDefault = existing.any { it.isDefault }
             val arch = detectArchitecture()
             val version = runtimeId.removePrefix("java")
-            val url = buildRuntimeUrl(version, arch)
+            val url = try {
+                buildRuntimeUrl(version, arch)
+            } catch (e: Exception) {
+                send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, error = e.message))
+                return@channelFlow
+            }
             val result = installer.install(
                 runtimeId = runtimeId,
                 version = version,
                 architecture = arch,
-                vendor = "temurin",
+                vendor = "openjdk",
                 archiveUrl = url,
                 archiveSha256 = null,
                 onProgress = { send(it) }
@@ -182,7 +187,12 @@ class DefaultRuntimeRepository(
             }
 
             val arch = runtime.architecture
-            val url = buildRuntimeUrl(runtime.version, arch)
+            val url = try {
+                buildRuntimeUrl(runtime.version, arch)
+            } catch (e: Exception) {
+                send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, error = e.message))
+                return@channelFlow
+            }
             val result = installer.install(
                 runtimeId = runtimeId,
                 version = runtime.version,
@@ -324,12 +334,23 @@ class DefaultRuntimeRepository(
     }
 
     private fun buildRuntimeUrl(version: String, arch: RuntimeArchitecture): String {
-        val archName = when (arch) {
-            RuntimeArchitecture.ARM64_V8A -> "aarch64"
-            RuntimeArchitecture.ARMEABI_V7A -> "arm"
-            RuntimeArchitecture.X86_64 -> "x64"
+        // Only Java 17 has a published Android/Bionic build in the source
+        // mirror. A glibc desktop JDK for any version cannot load on Android
+        // (see AppConfig.RUNTIME_JRE17_BASE_URL), so reject other majors with
+        // an actionable message instead of downloading an unusable archive.
+        val major = version.substringBefore('.')
+        if (major != "17") {
+            throw java.io.IOException(
+                "No Android-compatible Java $major runtime is available. " +
+                    "Install Java 17 instead."
+            )
         }
-        return "${AppConfig.RUNTIME_BASE_URL}$version/ga/linux/$archName/jdk/hotspot/normal/eclipse"
+        val asset = when (arch) {
+            RuntimeArchitecture.ARM64_V8A -> AppConfig.RUNTIME_JRE17_ARM64
+            RuntimeArchitecture.ARMEABI_V7A -> AppConfig.RUNTIME_JRE17_ARM
+            RuntimeArchitecture.X86_64 -> AppConfig.RUNTIME_JRE17_X86_64
+        }
+        return AppConfig.RUNTIME_JRE17_BASE_URL + asset
     }
 
     private companion object {

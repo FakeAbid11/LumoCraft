@@ -40,7 +40,9 @@ class RuntimeInstaller(
     ): Result<RuntimeInfo> = withContext(Dispatchers.IO) {
         try {
             val runtimeDir = storage.runtimeDirectoryFor(runtimeId)
-            val archiveFile = File(storage.runtimeDirectory(), "$runtimeId.tar.gz")
+            // Android runtimes are distributed as .tar.xz; the extractor
+            // selects the decompressor from this extension.
+            val archiveFile = File(storage.runtimeDirectory(), "$runtimeId.tar.xz")
 
             onProgress(RuntimeProgress(runtimeId, RuntimeStage.PREPARING))
             runtimeDir.mkdirs()

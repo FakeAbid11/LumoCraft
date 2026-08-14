@@ -11,16 +11,18 @@ import kotlinx.coroutines.withContext
 /**
  * Verifies a runtime installation on disk.
  *
- * - required binaries exist, are regular files and are executable
- *   (bin/java, bin/javac, bin/keytool) — every binary is classified as
- *   Missing, Not executable or Corrupted
- * - metadata (`release`) exists and matches the recorded version
+ * - required binary exists, is a regular file and is executable (bin/java)
+ * - metadata (`release`) matches the recorded version when present (a
+ *   missing `release` file is tolerated for JRE builds that omit it)
  * - checksum of the `release` file matches the recorded SHA-256 when present
- * - `lib/modules` exists (JRT image — the JDK cannot start without it)
- * - `lib/server/libjvm.so` exists (the HotSpot VM shared library)
- * - `jmods/` exists and is non-empty (JDK image completeness)
- * - runtime root layout is consistent (bin/, lib/ at the root, release
- *   at the root — a nested JVM home is flagged)
+ * - `lib/modules` exists (JRT image — the JVM cannot start without it)
+ * - a HotSpot VM library exists at `lib/server/libjvm.so` or
+ *   `lib/client/libjvm.so`
+ * - runtime root layout is consistent (bin/, lib/ at the root — a nested
+ *   JVM home is flagged)
+ *
+ * The runtimes installed are JREs, not full JDKs, so JDK-only artifacts
+ * (bin/javac, bin/keytool, jmods/) are intentionally not required.
  *
  * Returns a detailed [RuntimeVerificationReport] with missing and corrupt
  * file lists so callers can drive repair. A partially broken runtime is
@@ -82,23 +84,22 @@ class RuntimeVerifier {
                 false
             }
 
-            // HotSpot server library: lib/server/libjvm.so (JDK 9+ layout).
+            // HotSpot VM library: JREs ship either the server or the client
+            // VM (Android/Bionic builds commonly ship only one), so accept
+            // whichever is present.
             val serverLib = File(runtimeDir, "lib/server/libjvm.so")
-            val serverOk = if (serverLib.isFile) {
+            val clientLib = File(runtimeDir, "lib/client/libjvm.so")
+            val serverOk = if (serverLib.isFile || clientLib.isFile) {
                 true
             } else {
-                missing += "lib/server/libjvm.so"
+                missing += "lib/{server,client}/libjvm.so"
                 false
             }
 
-            // jmods directory: present and non-empty for a complete JDK image.
-            val jmodsDir = File(runtimeDir, "jmods")
-            val jmodsOk = if (jmodsDir.isDirectory && jmodsDir.listFiles()?.isNotEmpty() == true) {
-                true
-            } else {
-                missing += "jmods/"
-                false
-            }
+            // jmods are a full-JDK artifact; a JRE (which is all Minecraft
+            // needs to run) does not ship them, so their absence is not a
+            // failure. Kept as an always-true field for report compatibility.
+            val jmodsOk = true
 
             // Root consistency: bin/ and lib/ live at the runtime root, and
             // the runtime is not a nested JVM home (bin/java would be one
@@ -124,14 +125,16 @@ class RuntimeVerifier {
         }
 
     /**
-     * Verifies the runtime's `release` file exists and, when the runtime
-     * records a version, that the release file mentions it. The check is
-     * lenient: Temurin release files contain versions like
+     * Verifies the runtime's `release` metadata. When a `release` file is
+     * present and the runtime records a version, the file must mention that
+     * major version. A missing `release` file is tolerated: some Android JRE
+     * builds omit it, and it is not required to launch. The check is lenient
+     * on the version string: release files contain values like
      * `JAVA_VERSION="17.0.11+9"`, so we match on the major version prefix.
      */
     private fun verifyMetadata(runtimeDir: File, runtime: RuntimeInfo): Boolean {
         val releaseFile = File(runtimeDir, "release")
-        if (!releaseFile.isFile) return false
+        if (!releaseFile.isFile) return true
         if (runtime.version.isBlank()) return true
         val content = runCatching { releaseFile.readText() }.getOrNull() ?: return false
         val major = runtime.version.substringBefore('.')
@@ -166,10 +169,11 @@ class RuntimeVerifier {
     private companion object {
         const val TAG = "LumoCraft/RuntimeVerifier"
 
+        // Only bin/java is required to launch Minecraft. javac/keytool are
+        // JDK-only tools absent from the JRE runtimes we install, so they are
+        // no longer required.
         val REQUIRED_BINARIES = listOf(
-            "bin/java",
-            "bin/javac",
-            "bin/keytool"
+            "bin/java"
         )
     }
 }
