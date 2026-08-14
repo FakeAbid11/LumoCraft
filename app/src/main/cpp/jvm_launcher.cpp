@@ -130,13 +130,46 @@ std::vector<std::string> jarrayToStrings(JNIEnv* env, jobjectArray array) {
     return out;
 }
 
-/** Reads the platform fd out of a java.io.FileDescriptor. */
+/**
+ * Reads the platform fd out of a java.io.FileDescriptor.
+ *
+ * Prefers FileDescriptor.getInt$(), the accessor libcore ships
+ * specifically for native/JNI callers (used by Conscrypt, okio, etc.),
+ * since some Android versions (seen on Android 16 / SDK 36) reject
+ * reflective JNI access to the private "fd" field outright, throwing
+ * NoSuchFieldError instead of just failing to find it.
+ *
+ * Every failure path below must clear the pending exception before
+ * returning: GetFieldID/GetMethodID/CallIntMethod all throw on failure
+ * rather than merely returning null, and leaving that exception pending
+ * causes the *next* JNI call anywhere in launch() to abort the process
+ * (CheckJNI: "JNI called with pending exception").
+ */
 int fdFromJobject(JNIEnv* env, jobject fdObj) {
+    if (fdObj == nullptr) return -1;
     jclass fdClass = env->FindClass("java/io/FileDescriptor");
-    if (fdClass == nullptr) return -1;
+    if (fdClass == nullptr) {
+        env->ExceptionClear();
+        return -1;
+    }
+
+    jmethodID getInt = env->GetMethodID(fdClass, "getInt$", "()I");
+    if (getInt != nullptr) {
+        const jint fd = env->CallIntMethod(fdObj, getInt);
+        if (!env->ExceptionCheck()) return static_cast<int>(fd);
+        env->ExceptionClear();
+    } else {
+        env->ExceptionClear();
+    }
+
+    // Fallback for Android versions/ROMs without getInt$(): reflect on
+    // the private "fd" field directly.
     jfieldID fdField = env->GetFieldID(fdClass, "fd", "I");
-    if (fdField == nullptr) return -1;
-    jint fd = env->GetIntField(fdObj, fdField);
+    if (fdField == nullptr) {
+        env->ExceptionClear();
+        return -1;
+    }
+    const jint fd = env->GetIntField(fdObj, fdField);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         return -1;
