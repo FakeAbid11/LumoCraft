@@ -349,6 +349,8 @@
     <string name="about_update_available">A new version is available: %1$s</string>
     <string name="about_update_failed">Update check failed.</string>
     <string name="about_view_release">Open release page</string>
+    <string name="about_license_title">Credits &amp; license</string>
+    <string name="about_license_body">LumoCraft is free software licensed under the GNU General Public License v3.0. It integrates the PojavLauncher rendering stack (patched LWJGL, GLFW stub, pojavexec bridge — GPL-3.0) and gl4es (MIT). Minecraft is a trademark of Mojang AB; LumoCraft is unofficial and not affiliated with Mojang or Microsoft.</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome_title">Welcome to LumoCraft</string>

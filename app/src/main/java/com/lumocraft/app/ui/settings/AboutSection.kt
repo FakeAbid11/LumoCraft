@@ -125,6 +125,16 @@ fun AboutSection(
                 ) {
                     Text(stringResource(R.string.about_check_updates))
                 }
+                Text(
+                    text = stringResource(R.string.about_license_title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.about_license_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
