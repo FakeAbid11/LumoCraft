@@ -60,6 +60,47 @@ object AppConfig {
     const val RUNTIME_JRE17_ARM = "jre17-arm-20210914-release.tar.xz"
     const val RUNTIME_JRE17_X86_64 = "jre17-x86_64-20210825-release.tar.xz"
 
+    // SHA-256 of the pinned JRE 17 archives above. Computed once from the
+    // immutable release assets; the installer refuses any archive whose
+    // hash does not match, so a corrupted or MITM'd download is rejected
+    // before extraction.
+    const val RUNTIME_JRE17_ARM64_SHA256 =
+        "c64583ac2e0ec8857e43456fa9adcf482c6a8e454a7133173bf15692d2478b8d"
+    const val RUNTIME_JRE17_ARM_SHA256 =
+        "1c27a6a839fc76fc14618ad547b212f881f8d5b8dfa0c5853a38817ba316b428"
+    const val RUNTIME_JRE17_X86_64_SHA256 =
+        "ebbdf75ab864a83671a108032c30e67174f79cc19596cfc1d7bfb71be26b6e71"
+
+    /**
+     * Android/Bionic-compatible OpenJDK 21 runtime. Minecraft 1.20.5+ requires
+     * Java 21, which the older multiarch mirror above never published, so this
+     * runtime is sourced from ZalithLauncher's bundled Bionic OpenJDK 21.0.1
+     * build, pinned to an immutable commit.
+     *
+     * Unlike the single-file JRE 17 archives, this runtime is split into an
+     * architecture-independent [RUNTIME_JRE21_UNIVERSAL] part (conf/, legal/,
+     * lib/ classes) plus a per-architecture `bin-<arch>.tar.xz` (native
+     * binaries incl. bin/java and lib/libjli.so). Both parts extract into the
+     * same runtime directory to form a complete JRE.
+     */
+    private const val RUNTIME_JRE21_PIN =
+        "606aa07567a58f926fcc46e5b529c52eb9fea9fe"
+    const val RUNTIME_JRE21_BASE_URL =
+        "https://raw.githubusercontent.com/Vera-Firefly/ZalithLauncher/" +
+            "$RUNTIME_JRE21_PIN/ZalithLauncher/src/main/assets/components/jre-21/"
+    const val RUNTIME_JRE21_UNIVERSAL = "universal.tar.xz"
+    const val RUNTIME_JRE21_UNIVERSAL_SHA256 =
+        "57bd118b3696d572257c5f4be1762379eb6a81361a17da1c4b0b9f7131dd6d7c"
+    const val RUNTIME_JRE21_ARM64 = "bin-arm64.tar.xz"
+    const val RUNTIME_JRE21_ARM64_SHA256 =
+        "9889de6d0526e0c9708ea18c6e7e41a7c3d5ae366a02524ae3a392274d3462b5"
+    const val RUNTIME_JRE21_ARM = "bin-arm.tar.xz"
+    const val RUNTIME_JRE21_ARM_SHA256 =
+        "c782b17aabaa2be510144c464b5aa4784f984d2a07cfc4c3cd13a86ee399798e"
+    const val RUNTIME_JRE21_X86_64 = "bin-x86_64.tar.xz"
+    const val RUNTIME_JRE21_X86_64_SHA256 =
+        "1e1ccc34dd24f56efd2440aa80e658df5ac6efa2e3d866d8be0345d31284bef6"
+
     /** Update channel: GitHub releases for this project. */
     const val GITHUB_OWNER = "FakeAbid11"
     const val GITHUB_REPO = "LumoCraft"

@@ -71,8 +71,8 @@ class DefaultRuntimeRepository(
             val hasDefault = existing.any { it.isDefault }
             val arch = detectArchitecture()
             val version = runtimeId.removePrefix("java")
-            val url = try {
-                buildRuntimeUrl(version, arch)
+            val parts = try {
+                buildRuntimeParts(version, arch)
             } catch (e: Exception) {
                 send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, error = e.message))
                 return@channelFlow
@@ -82,8 +82,7 @@ class DefaultRuntimeRepository(
                 version = version,
                 architecture = arch,
                 vendor = "openjdk",
-                archiveUrl = url,
-                archiveSha256 = null,
+                parts = parts,
                 onProgress = { send(it) }
             )
             if (result.isFailure) {
@@ -187,8 +186,8 @@ class DefaultRuntimeRepository(
             }
 
             val arch = runtime.architecture
-            val url = try {
-                buildRuntimeUrl(runtime.version, arch)
+            val parts = try {
+                buildRuntimeParts(runtime.version, arch)
             } catch (e: Exception) {
                 send(RuntimeProgress(runtimeId, RuntimeStage.COMPLETE, error = e.message))
                 return@channelFlow
@@ -198,8 +197,7 @@ class DefaultRuntimeRepository(
                 version = runtime.version,
                 architecture = arch,
                 vendor = runtime.vendor,
-                archiveUrl = url,
-                archiveSha256 = null,
+                parts = parts,
                 onProgress = { send(it) }
             )
             if (result.isFailure) {
@@ -333,24 +331,50 @@ class DefaultRuntimeRepository(
         file.writeText(JSONObject().put(KEY_RUNTIMES, filtered).toString())
     }
 
-    private fun buildRuntimeUrl(version: String, arch: RuntimeArchitecture): String {
-        // Only Java 17 has a published Android/Bionic build in the source
-        // mirror. A glibc desktop JDK for any version cannot load on Android
-        // (see AppConfig.RUNTIME_JRE17_BASE_URL), so reject other majors with
-        // an actionable message instead of downloading an unusable archive.
-        val major = version.substringBefore('.')
-        if (major != "17") {
-            throw java.io.IOException(
-                "No Android-compatible Java $major runtime is available. " +
-                    "Install Java 17 instead."
+    private fun buildRuntimeParts(
+        version: String,
+        arch: RuntimeArchitecture,
+    ): List<RuntimeArchivePart> {
+        // Only majors with a published Android/Bionic build can load on
+        // Android (a glibc desktop JDK cannot be dlopen'd — see
+        // AppConfig.RUNTIME_JRE17_BASE_URL). Reject anything else with an
+        // actionable message instead of downloading an unusable archive.
+        return when (version.substringBefore('.')) {
+            "17" -> {
+                val (asset, sha) = when (arch) {
+                    RuntimeArchitecture.ARM64_V8A ->
+                        AppConfig.RUNTIME_JRE17_ARM64 to AppConfig.RUNTIME_JRE17_ARM64_SHA256
+                    RuntimeArchitecture.ARMEABI_V7A ->
+                        AppConfig.RUNTIME_JRE17_ARM to AppConfig.RUNTIME_JRE17_ARM_SHA256
+                    RuntimeArchitecture.X86_64 ->
+                        AppConfig.RUNTIME_JRE17_X86_64 to AppConfig.RUNTIME_JRE17_X86_64_SHA256
+                }
+                listOf(RuntimeArchivePart(AppConfig.RUNTIME_JRE17_BASE_URL + asset, sha))
+            }
+            "21" -> {
+                // Split runtime: the architecture-independent universal part
+                // first, then the per-ABI native part, both into one dir.
+                val (binAsset, binSha) = when (arch) {
+                    RuntimeArchitecture.ARM64_V8A ->
+                        AppConfig.RUNTIME_JRE21_ARM64 to AppConfig.RUNTIME_JRE21_ARM64_SHA256
+                    RuntimeArchitecture.ARMEABI_V7A ->
+                        AppConfig.RUNTIME_JRE21_ARM to AppConfig.RUNTIME_JRE21_ARM_SHA256
+                    RuntimeArchitecture.X86_64 ->
+                        AppConfig.RUNTIME_JRE21_X86_64 to AppConfig.RUNTIME_JRE21_X86_64_SHA256
+                }
+                listOf(
+                    RuntimeArchivePart(
+                        AppConfig.RUNTIME_JRE21_BASE_URL + AppConfig.RUNTIME_JRE21_UNIVERSAL,
+                        AppConfig.RUNTIME_JRE21_UNIVERSAL_SHA256
+                    ),
+                    RuntimeArchivePart(AppConfig.RUNTIME_JRE21_BASE_URL + binAsset, binSha)
+                )
+            }
+            else -> throw java.io.IOException(
+                "No Android-compatible Java ${version.substringBefore('.')} runtime is " +
+                    "available. Install Java 17 or Java 21 instead."
             )
         }
-        val asset = when (arch) {
-            RuntimeArchitecture.ARM64_V8A -> AppConfig.RUNTIME_JRE17_ARM64
-            RuntimeArchitecture.ARMEABI_V7A -> AppConfig.RUNTIME_JRE17_ARM
-            RuntimeArchitecture.X86_64 -> AppConfig.RUNTIME_JRE17_X86_64
-        }
-        return AppConfig.RUNTIME_JRE17_BASE_URL + asset
     }
 
     private companion object {

@@ -15,11 +15,25 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * One downloadable archive that makes up (part of) a runtime. Simple
+ * runtimes are a single part; split runtimes (e.g. the Bionic JRE 21) are
+ * an architecture-independent "universal" part plus a per-ABI part, all
+ * extracted into the same runtime directory.
+ *
+ * @param sha256 lowercase hex SHA-256 the downloaded archive must match, or
+ *   null to skip integrity verification for this part.
+ */
+data class RuntimeArchivePart(
+    val url: String,
+    val sha256: String?,
+)
+
+/**
  * Downloads, verifies and extracts a Java runtime archive into
  * `<launcherRoot>/runtime/<id>/`.
  *
  * - downloads via the shared [Downloader] (retry + backoff)
- * - verifies SHA-256 of the archive before extraction
+ * - verifies SHA-256 of each archive part before extraction
  * - extracts safely via [ArchiveExtractor] (path traversal rejected)
  * - supports cancellation at every step
  */
@@ -34,52 +48,68 @@ class RuntimeInstaller(
         version: String,
         architecture: RuntimeArchitecture,
         vendor: String,
-        archiveUrl: String,
-        archiveSha256: String?,
+        parts: List<RuntimeArchivePart>,
         onProgress: suspend (RuntimeProgress) -> Unit,
     ): Result<RuntimeInfo> = withContext(Dispatchers.IO) {
         try {
+            require(parts.isNotEmpty()) { "Runtime must have at least one archive part" }
             val runtimeDir = storage.runtimeDirectoryFor(runtimeId)
-            // Android runtimes are distributed as .tar.xz; the extractor
-            // selects the decompressor from this extension.
-            val archiveFile = File(storage.runtimeDirectory(), "$runtimeId.tar.xz")
 
             onProgress(RuntimeProgress(runtimeId, RuntimeStage.PREPARING))
             runtimeDir.mkdirs()
 
-            onProgress(RuntimeProgress(runtimeId, RuntimeStage.DOWNLOADING))
-            val downloadResult = downloader.download(archiveUrl, archiveFile) { fraction ->
-                fraction?.let { f ->
-                    onProgress(RuntimeProgress(runtimeId, RuntimeStage.DOWNLOADING, f))
-                }
-            }
-            if (downloadResult.isFailure) {
-                return@withContext Result.failure(
-                    downloadResult.exceptionOrNull() ?: IOException("Runtime download failed")
-                )
-            }
+            // Download → verify → extract each part into the same directory.
+            // Progress is scaled so several parts still report a single 0..1
+            // download bar and a single 0..1 extraction bar.
+            parts.forEachIndexed { index, part ->
+                // Android runtimes are distributed as .tar.xz; the extractor
+                // selects the decompressor from this extension.
+                val archiveFile = File(storage.runtimeDirectory(), "$runtimeId-part$index.tar.xz")
+                val base = index.toFloat()
+                val span = parts.size.toFloat()
 
-            if (archiveSha256 != null) {
-                val actual = HashUtils.sha256(archiveFile)
-                if (actual != archiveSha256) {
-                    archiveFile.delete()
+                onProgress(RuntimeProgress(runtimeId, RuntimeStage.DOWNLOADING, base / span))
+                val downloadResult = downloader.download(part.url, archiveFile) { fraction ->
+                    fraction?.let { f ->
+                        onProgress(
+                            RuntimeProgress(
+                                runtimeId, RuntimeStage.DOWNLOADING, (base + f) / span
+                            )
+                        )
+                    }
+                }
+                if (downloadResult.isFailure) {
                     return@withContext Result.failure(
-                        IOException("Runtime archive SHA-256 mismatch")
+                        downloadResult.exceptionOrNull() ?: IOException("Runtime download failed")
                     )
                 }
-            }
 
-            onProgress(RuntimeProgress(runtimeId, RuntimeStage.EXTRACTING))
-            val extractResult = extractor.extract(archiveFile, runtimeDir) { fraction ->
-                onProgress(RuntimeProgress(runtimeId, RuntimeStage.EXTRACTING, fraction))
-            }
-            if (extractResult.isFailure) {
+                if (part.sha256 != null) {
+                    val actual = HashUtils.sha256(archiveFile)
+                    if (!actual.equals(part.sha256, ignoreCase = true)) {
+                        archiveFile.delete()
+                        return@withContext Result.failure(
+                            IOException("Runtime archive SHA-256 mismatch")
+                        )
+                    }
+                }
+
+                onProgress(RuntimeProgress(runtimeId, RuntimeStage.EXTRACTING, base / span))
+                val extractResult = extractor.extract(archiveFile, runtimeDir) { fraction ->
+                    onProgress(
+                        RuntimeProgress(
+                            runtimeId, RuntimeStage.EXTRACTING, (base + fraction) / span
+                        )
+                    )
+                }
+                if (extractResult.isFailure) {
+                    archiveFile.delete()
+                    return@withContext Result.failure(
+                        extractResult.exceptionOrNull() ?: IOException("Runtime extraction failed")
+                    )
+                }
                 archiveFile.delete()
-                return@withContext Result.failure(
-                    extractResult.exceptionOrNull() ?: IOException("Runtime extraction failed")
-                )
             }
-            archiveFile.delete()
 
             val jvmRoot = findJvmRoot(runtimeDir)
 
