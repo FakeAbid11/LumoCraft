@@ -45,7 +45,9 @@ class StorageManager(context: Context) {
      * the GLFW stub) land at install time; the game JVM must find them on its
      * `LD_LIBRARY_PATH`/`java.library.path` to render.
      */
-    private val nativeLibraryDir: File = File(context.applicationInfo.nativeLibraryDir)
+    private val nativeLibraryDir: File =
+        context.applicationInfo.nativeLibraryDir?.let(::File)
+            ?: File(launcherRoot, "nativeLibs")
 
     fun launcherRoot(): File = launcherRoot
 
