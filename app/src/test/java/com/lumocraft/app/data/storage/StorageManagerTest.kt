@@ -77,6 +77,11 @@ class StorageManagerTest {
     @Test
     fun `prepareDirectories fails when a required path is not a directory`() {
         val storage = storage()
+        // The launcher root must exist so the blocking file can be written into
+        // it; this test does not call prepareDirectories() (which would create
+        // `versions` as a directory), so create the root explicitly rather than
+        // depending on another test having run first.
+        storage.launcherRoot().mkdirs()
         val blocked = File(storage.launcherRoot(), "versions")
         blocked.deleteRecursively()
         blocked.writeText("file in the way")
