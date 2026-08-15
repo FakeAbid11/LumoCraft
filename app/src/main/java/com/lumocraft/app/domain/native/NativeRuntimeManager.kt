@@ -26,6 +26,14 @@ interface NativeRuntimeManager {
     fun nativeDirectory(versionId: String): File
 
     /**
+     * The APK's packaged native-library directory holding the bundled
+     * PojavLauncher rendering natives (libpojavexec, gl4es, GLFW stub).
+     * The launch pipeline puts this on the process `LD_LIBRARY_PATH` so the
+     * game JVM's LWJGL can load the rendering bridge.
+     */
+    fun renderingNativesDirectory(): File
+
+    /**
      * JNI environment for the Java process: java.library.path and
      * org.lwjgl.librarypath, both pointing at [nativeDirectory]. No
      * temporary folders are hardcoded — everything lives under the

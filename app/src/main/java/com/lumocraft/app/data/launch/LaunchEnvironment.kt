@@ -27,18 +27,36 @@ class LaunchEnvironment(private val storage: StorageManager) {
         listOf(gameDirectory(), homeDirectory(), tempDirectory()).forEach { it.mkdirs() }
     }
 
-    /** Process environment for the Java executable. */
-    fun buildProcessEnvironment(javaHome: File): Map<String, String> {
-        val javaLibPath = listOf("lib/server", "lib", "lib/jli", "bin")
+    /**
+     * Process environment for the Java executable.
+     *
+     * [nativeLibraryDir], when supplied, is the APK's packaged native-library
+     * directory holding the bundled PojavLauncher rendering natives; it is
+     * prepended to `LD_LIBRARY_PATH` so the game JVM's LWJGL can `dlopen`
+     * libpojavexec/gl4es. [rendererEnv] carries the gl4es/pojav renderer
+     * variables (see [RendererEnvironment]) that those C libraries read.
+     */
+    fun buildProcessEnvironment(
+        javaHome: File,
+        nativeLibraryDir: File? = null,
+        rendererEnv: Map<String, String> = emptyMap(),
+    ): Map<String, String> {
+        val javaLibPaths = listOf("lib/server", "lib", "lib/jli", "bin")
             .map { File(javaHome, it).absolutePath }
+        // The rendering natives directory goes first so pojavexec/gl4es and
+        // their transitive deps resolve ahead of the JDK's own libraries.
+        val ldLibraryPath = (listOfNotNull(nativeLibraryDir?.absolutePath) + javaLibPaths)
             .joinToString(File.pathSeparator)
-        return mapOf(
-            "JAVA_HOME" to javaHome.absolutePath,
-            "HOME" to homeDirectory().absolutePath,
-            "TMPDIR" to tempDirectory().absolutePath,
-            "LD_LIBRARY_PATH" to javaLibPath,
-            "PATH" to "${File(javaHome, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH")}"
-        )
+        return buildMap {
+            put("JAVA_HOME", javaHome.absolutePath)
+            put("HOME", homeDirectory().absolutePath)
+            put("TMPDIR", tempDirectory().absolutePath)
+            put("LD_LIBRARY_PATH", ldLibraryPath)
+            put("PATH", "${File(javaHome, "bin").absolutePath}${File.pathSeparator}${System.getenv("PATH")}")
+            // Renderer env last: it only adds LIBGL_*/POJAV_* keys and never
+            // collides with the process paths above.
+            putAll(rendererEnv)
+        }
     }
 
     private companion object {

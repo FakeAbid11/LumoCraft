@@ -202,7 +202,11 @@ class DefaultLaunchPipeline(
                 javaHome = javaHome,
                 arguments = finalArgs.jvmArguments + finalArgs.mainClass + finalArgs.gameArguments,
                 workingDirectory = context.gameDirectory,
-                environment = environment.buildProcessEnvironment(javaHome),
+                environment = environment.buildProcessEnvironment(
+                    javaHome = javaHome,
+                    nativeLibraryDir = nativeRuntimeManager.renderingNativesDirectory(),
+                    rendererEnv = RendererEnvironment.of(rendererProfile)
+                ),
                 architecture = context.runtime.architecture
             )
 

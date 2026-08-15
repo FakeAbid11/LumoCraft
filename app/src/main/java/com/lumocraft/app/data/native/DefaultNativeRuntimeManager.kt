@@ -42,11 +42,20 @@ class DefaultNativeRuntimeManager(
     override fun nativeDirectory(versionId: String): File =
         extractionService.archDirectory(versionId, detectedArchitecture)
 
+    override fun renderingNativesDirectory(): File = storage.nativeLibraryDirectory()
+
     override fun jniEnvironment(versionId: String): Map<String, String> {
         val directory = nativeDirectory(versionId).absolutePath
+        // Both the per-version extracted natives and the bundled rendering
+        // natives must be searchable: LWJGL/JNA resolve the former, the
+        // Pojav LWJGL resolves libpojavexec/gl4es from the latter.
+        val renderingNatives = storage.nativeLibraryDirectory().absolutePath
+        val librarypath = listOf(directory, renderingNatives)
+            .distinct()
+            .joinToString(File.pathSeparator)
         return mapOf(
-            "java.library.path" to directory,
-            "org.lwjgl.librarypath" to directory
+            "java.library.path" to librarypath,
+            "org.lwjgl.librarypath" to librarypath
         )
     }
 

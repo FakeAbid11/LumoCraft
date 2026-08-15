@@ -39,7 +39,17 @@ class StorageManager(context: Context) {
 
     private val launcherRoot: File = File(context.filesDir, AppConfig.LAUNCHER_DIRECTORY_NAME)
 
+    /**
+     * The APK's packaged native-library directory (`.../lib/<abi>`). This is
+     * where the bundled PojavLauncher rendering natives (libpojavexec, gl4es,
+     * the GLFW stub) land at install time; the game JVM must find them on its
+     * `LD_LIBRARY_PATH`/`java.library.path` to render.
+     */
+    private val nativeLibraryDir: File = File(context.applicationInfo.nativeLibraryDir)
+
     fun launcherRoot(): File = launcherRoot
+
+    fun nativeLibraryDirectory(): File = nativeLibraryDir
 
     fun versionsDirectory(): File = File(launcherRoot, "versions")
 
