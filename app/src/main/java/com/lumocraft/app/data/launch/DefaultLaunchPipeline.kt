@@ -79,6 +79,15 @@ class DefaultLaunchPipeline(
      * the input system is fully wired in a later phase.
      */
     private val inputConfiguration: () -> com.lumocraft.app.domain.input.InputConfiguration? = { null },
+    /**
+     * Optional "surface before LWJGL init" gate. When a surface is expected
+     * (the game view is being shown) the pipeline waits here — bounded and
+     * non-fatal — for the render surface to be ready before starting the JVM,
+     * so the game's LWJGL never creates its GL context before an
+     * `ANativeWindow` exists. Null (tests / console-only builds) skips the
+     * wait entirely.
+     */
+    private val surfaceGate: GameSurfaceGate? = null,
 ) : LaunchPipeline {
 
     /*
@@ -197,6 +206,12 @@ class DefaultLaunchPipeline(
             writeLauncherLine("JVM: $javaHome")
             writeLauncherLine("JVM args: ${finalArgs.jvmArguments.joinToString(" ")}")
             writeLauncherLine("Game args: ${finalArgs.gameArguments.joinToString(" ")}")
+
+            // Surface-before-LWJGL ordering: the game JVM runs in-process, so
+            // its patched LWJGL must find a live render surface before it
+            // creates a GL context. When the game view is hosting a surface,
+            // park here (bounded, non-fatal) until it is ready.
+            awaitRenderSurface()
 
             val command = JvmLaunchCommand(
                 javaHome = javaHome,
@@ -500,6 +515,28 @@ class DefaultLaunchPipeline(
         logs.writeLine("[LumoCraft] $line")
     }
 
+    /**
+     * Waits for the render surface when one is expected, so the in-process
+     * JVM's LWJGL never initializes GL before an `ANativeWindow` is attached.
+     * No-op when no gate is wired or no surface is expected (console-only /
+     * headless); bounded and non-fatal so a surface that never arrives falls
+     * back to a best-effort start instead of hanging the launch.
+     */
+    private suspend fun awaitRenderSurface() {
+        val gate = surfaceGate ?: return
+        if (!gate.isSurfaceExpected) return
+        _state.value = LaunchProgress(LaunchState.STARTING_JAVA, "Waiting for render surface")
+        writeLauncherLine("Waiting for render surface (up to ${SURFACE_WAIT_MS / 1000}s)")
+        val surface = gate.awaitSurface(SURFACE_WAIT_MS)
+        if (surface == null) {
+            writeLauncherLine(
+                "No render surface within ${SURFACE_WAIT_MS / 1000}s — starting the JVM anyway"
+            )
+        } else {
+            writeLauncherLine("Render surface ready — starting the JVM")
+        }
+    }
+
     private fun validationFailureMessage(report: LaunchValidationReport): String =
         buildString {
             append("Validation failed:")
@@ -537,6 +574,9 @@ class DefaultLaunchPipeline(
 
         /** Grace after cancel() before declaring the JVM wedged. */
         const val CANCEL_GRACE_MS = 5_000L
+
+        /** Bounds the wait for the render surface before starting the JVM. */
+        const val SURFACE_WAIT_MS = 10_000L
     }
 }
 

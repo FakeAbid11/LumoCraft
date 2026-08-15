@@ -14,6 +14,7 @@ import com.lumocraft.app.domain.launch.LaunchContext
 import com.lumocraft.app.domain.launch.LaunchPipeline
 import com.lumocraft.app.domain.launch.LaunchProgress
 import com.lumocraft.app.domain.launch.LaunchState
+import com.lumocraft.app.ui.game.GameActivity
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.kdt.pojavlaunch.utils.JREUtils
 
 /** Immutable state for the Launch screen. */
 data class LaunchUiState(
@@ -74,6 +76,7 @@ class LaunchViewModel(
             // Consumed: subsequent visits must bring their own context.
             application.pendingLaunchContext = null
             if (pipeline.state.value.state == LaunchState.IDLE) {
+                startGameViewIfRenderable()
                 pipeline.launch(context)
             }
         }
@@ -88,8 +91,24 @@ class LaunchViewModel(
         val context = _pendingContext.value ?: return
         val current = pipeline.state.value.state
         if (current == LaunchState.FAILED || current == LaunchState.FINISHED) {
+            startGameViewIfRenderable()
             pipeline.launch(context)
         }
+    }
+
+    /**
+     * Opens the full-screen [GameActivity] so its render surface exists before
+     * the in-process JVM reaches LWJGL init, and tells the pipeline to wait
+     * for it. Only when the PojavLauncher rendering bridge actually loaded:
+     * without the vendored natives (CI / not-yet-fetched builds) the bridge is
+     * absent, so the launch stays on the console screen exactly as before.
+     */
+    private fun startGameViewIfRenderable() {
+        if (JREUtils.ensureLoaded() != null) return
+        application.gameSurfaceGate.expectSurface()
+        val intent = Intent(application, GameActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { application.startActivity(intent) }
     }
 
     fun cancel() {

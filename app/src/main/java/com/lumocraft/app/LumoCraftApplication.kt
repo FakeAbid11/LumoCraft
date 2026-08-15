@@ -15,6 +15,7 @@ import com.lumocraft.app.data.launch.ClasspathBuilder
 import com.lumocraft.app.data.launch.ClientJarManager
 import com.lumocraft.app.data.launch.CrashAnalyzer
 import com.lumocraft.app.data.launch.DefaultLaunchPipeline
+import com.lumocraft.app.data.launch.GameSurfaceGate
 import com.lumocraft.app.data.launch.LaunchArgumentBuilder
 import com.lumocraft.app.data.launch.LaunchEnvironment
 import com.lumocraft.app.data.launch.LauncherLogRepository
@@ -286,12 +287,22 @@ class LumoCraftApplication : Application() {
             logs = launcherLogRepository,
             performance = performanceManager,
             loader = loaderLaunchConfigurator,
-            inputConfiguration = { inputManager.configuration() }
+            inputConfiguration = { inputManager.configuration() },
+            surfaceGate = gameSurfaceGate
         )
     }
 
     val inputRepository: InputRepository by lazy {
         JsonInputRepository(storageManager, InputPreferences(this))
+    }
+
+    /**
+     * Coordinates the "surface before LWJGL init" ordering: [GameActivity]
+     * publishes its render surface here and the launch pipeline waits for it
+     * before starting the in-process game JVM.
+     */
+    val gameSurfaceGate: GameSurfaceGate by lazy {
+        GameSurfaceGate()
     }
 
     /**
