@@ -44,16 +44,16 @@ class VersionJsonTest {
     }
 
     @Test
-    fun `natives classifiers are resolved for the current os`() {
+    fun `non-lwjgl natives classifiers are resolved for the current os`() {
         val json = versionJson(
             JSONArray().put(
                 JSONObject()
-                    .put("name", "org.lwjgl:lwjgl:3.3.1")
+                    .put("name", "net.java.dev.jna:jna:5.13.0")
                     .put("natives", JSONObject().put("linux", "natives-linux"))
                     .put("downloads", JSONObject().put("classifiers", JSONObject().put(
                         "natives-linux",
                         JSONObject()
-                            .put("path", "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-linux.jar")
+                            .put("path", "net/java/dev/jna/jna/5.13.0/jna-5.13.0-natives-linux.jar")
                             .put("sha1", "abc123")
                             .put("size", 42L)
                     )))
@@ -61,9 +61,51 @@ class VersionJsonTest {
         )
         val library = VersionJson.libraries(json).single()
         assertEquals("natives-linux", library.classifier)
-        assertEquals("org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-linux.jar", library.path)
+        assertEquals("net/java/dev/jna/jna/5.13.0/jna-5.13.0-natives-linux.jar", library.path)
         assertEquals("abc123", library.sha1)
         assertEquals(42L, library.size)
+    }
+
+    @Test
+    fun `lwjgl desktop native artifacts are dropped but the classes jar is kept`() {
+        // Modern manifests list the LWJGL classes jar (no classifier) and a
+        // separate natives-linux artifact. The desktop native must be dropped
+        // (Pojav supplies ARM natives), the classes jar kept on the classpath.
+        val json = versionJson(
+            JSONArray()
+                .put(
+                    JSONObject()
+                        .put("name", "org.lwjgl:lwjgl:3.3.1")
+                        .put("downloads", JSONObject().put("artifact", JSONObject()
+                            .put("path", "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar")
+                            .put("sha1", "aaa").put("size", 10L)))
+                )
+                .put(
+                    JSONObject()
+                        .put("name", "org.lwjgl:lwjgl:3.3.1")
+                        .put("natives", JSONObject().put("linux", "natives-linux"))
+                        .put("downloads", JSONObject().put("classifiers", JSONObject().put(
+                            "natives-linux",
+                            JSONObject()
+                                .put("path", "org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-linux.jar")
+                                .put("sha1", "bbb").put("size", 20L)
+                        )))
+                )
+        )
+        val libraries = VersionJson.libraries(json)
+        assertEquals(1, libraries.size)
+        assertEquals("org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar", libraries.single().path)
+        assertNull(libraries.single().classifier)
+    }
+
+    @Test
+    fun `lwjgl maven-classifier native coordinates are dropped`() {
+        val json = versionJson(
+            JSONArray().put(
+                JSONObject().put("name", "org.lwjgl:lwjgl-glfw:3.3.1:natives-linux")
+            )
+        )
+        assertTrue(VersionJson.libraries(json).isEmpty())
     }
 
     @Test
@@ -85,11 +127,11 @@ class VersionJsonTest {
         val json = versionJson(
             JSONArray().put(
                 JSONObject()
-                    .put("name", "org.lwjgl:lwjgl:3.3.1:natives-linux")
+                    .put("name", "net.java.dev.jna:jna:5.13.0:natives-linux")
             )
         )
         val library = VersionJson.libraries(json).single()
-        assertEquals("org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-linux.jar", library.path)
+        assertEquals("net/java/dev/jna/jna/5.13.0/jna-5.13.0-natives-linux.jar", library.path)
         assertEquals("natives-linux", library.classifier)
     }
 

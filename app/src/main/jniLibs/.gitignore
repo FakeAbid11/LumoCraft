@@ -1,0 +1,7 @@
+# Vendored PojavLauncher rendering natives — fetched, not committed.
+#
+# Populate with:  tools/fetch-pojav-natives.sh
+# These GPL-3.0 binaries come from a pinned PojavLauncher release; keeping
+# them out of git avoids bloating the repo with per-ABI .so blobs.
+*/
+!.gitignore

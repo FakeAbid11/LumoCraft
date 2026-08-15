@@ -45,9 +45,20 @@ object VersionJson {
             val downloads = entry.optJSONObject("downloads")
             var artifact = downloads?.optJSONObject("artifact")
             val natives = entry.optJSONObject("natives")
+            val name = entry.optString("name")
             val classifier = natives?.optString(osName)?.takeIf { it.isNotEmpty() }
-                ?: entry.optString("name").substringAfterLast(':')
+                ?: name.substringAfterLast(':')
                     .takeIf { it.startsWith("natives-") }
+
+            // Mojang publishes only desktop (x86_64 glibc) LWJGL/GLFW natives.
+            // Extracting those onto an Android/ARM device produced the
+            // UnsatisfiedLinkError at LWJGL init: they are the wrong ABI and
+            // link against a real desktop OpenGL that Android does not have.
+            // The rendering stack instead ships PojavLauncher's patched LWJGL
+            // natives from jniLibs, so drop Mojang's native artifacts here
+            // (the LWJGL *classes* jars, which have no classifier, are kept).
+            if (classifier != null && isDesktopRenderingNative(name)) continue
+
             if (classifier != null && natives != null) {
                 artifact = downloads?.optJSONObject("classifiers")?.optJSONObject(classifier)
             }
@@ -187,6 +198,14 @@ object VersionJson {
         val arch = os.optString("arch").lowercase()
         return arch.isEmpty() || arch == osArch
     }
+
+    /**
+     * True for LWJGL/GLFW native artifacts (group `org.lwjgl`). Their only
+     * published classifiers are desktop x86_64 glibc builds that cannot load
+     * on Android; PojavLauncher's patched natives (in jniLibs) replace them.
+     */
+    private fun isDesktopRenderingNative(name: String): Boolean =
+        name.substringBefore(':') == "org.lwjgl"
 
     private fun sha1Of(obj: JSONObject): String? =
         obj.optString("sha1").takeIf { it.isNotEmpty() }

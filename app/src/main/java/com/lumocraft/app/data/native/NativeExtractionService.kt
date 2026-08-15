@@ -212,6 +212,12 @@ class NativeExtractionService(private val storage: StorageManager) {
                 }
                 val target = File(targetDir, fileName)
                 if (target.isFile && target.length() == entry.size) {
+                    if (!ElfArch.matches(target, arch)) {
+                        // Wrong-ABI binary already on disk from an earlier run:
+                        // drop it so it is never stamped or loaded.
+                        target.delete()
+                        continue
+                    }
                     seenNames[fileName] = jar.name
                     result += ExtractedEntry(fileName, entry.size, wasDuplicate = false)
                     continue
@@ -225,6 +231,13 @@ class NativeExtractionService(private val storage: StorageManager) {
                             output.write(buffer, 0, read)
                         }
                     }
+                }
+                if (!ElfArch.matches(target, arch)) {
+                    // A `.so` whose ELF e_machine does not match this device:
+                    // the wrong ABI. Delete and skip rather than extracting a
+                    // binary that would fail at dlopen with UnsatisfiedLinkError.
+                    target.delete()
+                    continue
                 }
                 seenNames[fileName] = jar.name
                 result += ExtractedEntry(fileName, entry.size, wasDuplicate = false)

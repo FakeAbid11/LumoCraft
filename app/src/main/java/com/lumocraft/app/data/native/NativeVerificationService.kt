@@ -62,6 +62,10 @@ class NativeVerificationService(private val storage: StorageManager) {
                     when {
                         !file.isFile -> missing += entry.name
                         file.length() != entry.size -> corrupt += entry.name
+                        // A binary whose ELF e_machine does not match the
+                        // device ABI would fail at dlopen; treat it as corrupt
+                        // instead of trusting the folder name it came from.
+                        !ElfArch.matches(file, arch) -> corrupt += entry.name
                     }
                 }
             }
