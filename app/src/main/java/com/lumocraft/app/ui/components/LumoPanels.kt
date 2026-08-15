@@ -1,6 +1,7 @@
 package com.lumocraft.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -318,7 +319,7 @@ fun LumoPlayButton(
 
 /** Thin wrapper so callers don't need the foundation clickable import. */
 private fun Modifier.androidxClickable(onClick: () -> Unit): Modifier =
-    androidx.compose.foundation.clickable(onClick = onClick)
+    this.clickable(onClick = onClick)
 
 
 
