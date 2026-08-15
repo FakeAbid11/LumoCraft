@@ -88,6 +88,17 @@ class DefaultLaunchPipeline(
      * wait entirely.
      */
     private val surfaceGate: GameSurfaceGate? = null,
+    /**
+     * Reports whether this build can actually display the game — i.e. the
+     * PojavLauncher rendering bridge native loaded. The game JVM runs
+     * in-process, so if it boots without a renderer its fatal LWJGL/GLFW
+     * failure aborts the *whole app* (there is nothing to catch a native
+     * `abort()`/`System.exit` in the shared process). When rendering is
+     * unavailable the pipeline fails the launch up front with a clear
+     * message instead of booting a JVM that would take the app down.
+     * Defaults to `{ true }` so tests and rendering-capable builds proceed.
+     */
+    private val renderBridgeAvailable: () -> Boolean = { true },
 ) : LaunchPipeline {
 
     /*
@@ -134,6 +145,7 @@ class DefaultLaunchPipeline(
         var jvmStartMs = 0L
         var cachedValidation = false
         try {
+            ensureRenderable()
             environment.prepare()
             logs.logArchitecture(nativeRuntimeManager.architecture().abi)
             logs.logMemoryProfile(performance.deviceProfile())
@@ -522,6 +534,25 @@ class DefaultLaunchPipeline(
      * headless); bounded and non-fatal so a surface that never arrives falls
      * back to a best-effort start instead of hanging the launch.
      */
+    /**
+     * Fails fast when this build cannot display the game. Minecraft has no
+     * headless client: booting the in-process JVM without a rendering engine
+     * ends in a fatal LWJGL/GLFW native error that aborts the whole app (the
+     * observed "the app closes itself a few seconds after Play"). Surfacing a
+     * clear, terminal failure here is strictly better than that silent crash.
+     */
+    private fun ensureRenderable() {
+        if (renderBridgeAvailable()) return
+        throw LaunchException(
+            message = "This build doesn't include Minecraft's rendering engine, " +
+                "so the game can't be displayed — starting it would crash the " +
+                "app. Build a rendering-capable APK by running " +
+                "tools/fetch-pojav-natives.sh to bundle the PojavLauncher " +
+                "native libraries before assembling.",
+            type = LaunchErrorType.RENDER_ENGINE_UNAVAILABLE
+        )
+    }
+
     private suspend fun awaitRenderSurface() {
         val gate = surfaceGate ?: return
         if (!gate.isSurfaceExpected) return

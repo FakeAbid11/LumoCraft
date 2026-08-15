@@ -80,6 +80,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import net.kdt.pojavlaunch.utils.JREUtils
 
 /**
  * Minimal manual dependency container — no DI framework needed.
@@ -288,7 +289,12 @@ class LumoCraftApplication : Application() {
             performance = performanceManager,
             loader = loaderLaunchConfigurator,
             inputConfiguration = { inputManager.configuration() },
-            surfaceGate = gameSurfaceGate
+            surfaceGate = gameSurfaceGate,
+            // Rendering is only possible when the PojavLauncher bridge native
+            // loaded. Without it the game JVM would boot and then abort the
+            // whole app at LWJGL init, so the pipeline fails the launch up
+            // front with a clear message instead. See GameSurfaceGate.
+            renderBridgeAvailable = { JREUtils.ensureLoaded() == null }
         )
     }
 
