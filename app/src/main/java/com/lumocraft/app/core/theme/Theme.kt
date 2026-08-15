@@ -2,7 +2,6 @@ package com.lumocraft.app.core.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import com.lumocraft.app.domain.model.ThemeMode
@@ -28,7 +27,8 @@ fun LumoCraftTheme(
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography(),
+            typography = LumoTypography,
+            shapes = LumoShapes,
             content = content
         )
     }

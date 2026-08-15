@@ -5,15 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +30,8 @@ import com.lumocraft.app.domain.runtime.RuntimeInfo
 import com.lumocraft.app.domain.runtime.RuntimeProgress
 import com.lumocraft.app.domain.runtime.RuntimeStage
 import com.lumocraft.app.domain.runtime.RuntimeStatus
+import com.lumocraft.app.ui.components.InfoRow
+import com.lumocraft.app.ui.components.LumoSectionPanel
 
 @Composable
 fun RuntimeSettingsSection(
@@ -42,80 +40,64 @@ fun RuntimeSettingsSection(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    LumoSectionPanel(
+        title = stringResource(R.string.settings_section_runtime),
+        modifier = modifier,
     ) {
-        Text(
-            text = stringResource(R.string.settings_section_runtime),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                uiState.architecture?.let { arch ->
-                    InfoRow(
-                        label = stringResource(R.string.runtime_architecture),
-                        value = arch.abi
-                    )
-                }
-
-                val runtime = uiState.defaultRuntime
-                if (runtime != null) {
-                    RuntimeStatusCard(
-                        runtime = runtime,
-                        isActive = uiState.activeRuntimeId == runtime.id,
-                        onVerify = { viewModel.verify(runtime.id) },
-                        onRepair = { viewModel.repair(runtime.id) },
-                        onRemove = { viewModel.remove(runtime.id) }
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.runtime_not_installed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.install("java17") },
-                        enabled = uiState.activeRuntimeId == null,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.runtime_install_java17))
-                    }
-                    Button(
-                        onClick = { viewModel.install("java21") },
-                        enabled = uiState.activeRuntimeId == null,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.runtime_install_java21))
-                    }
-                }
-
-                uiState.progress?.let { progress ->
-                    RuntimeProgressBar(progress)
-                }
-
-                RamSettings(
-                    config = uiState.jvmConfig,
-                    onMaxMemoryChange = viewModel::setMaxMemory,
-                    onMinMemoryChange = viewModel::setMinMemory
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            uiState.architecture?.let { arch ->
+                InfoRow(
+                    label = stringResource(R.string.runtime_architecture),
+                    value = arch.abi
                 )
             }
+
+            val runtime = uiState.defaultRuntime
+            if (runtime != null) {
+                RuntimeStatusCard(
+                    runtime = runtime,
+                    isActive = uiState.activeRuntimeId == runtime.id,
+                    onVerify = { viewModel.verify(runtime.id) },
+                    onRepair = { viewModel.repair(runtime.id) },
+                    onRemove = { viewModel.remove(runtime.id) }
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.runtime_not_installed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.install("java17") },
+                    enabled = uiState.activeRuntimeId == null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.runtime_install_java17))
+                }
+                Button(
+                    onClick = { viewModel.install("java21") },
+                    enabled = uiState.activeRuntimeId == null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.runtime_install_java21))
+                }
+            }
+
+            uiState.progress?.let { progress ->
+                RuntimeProgressBar(progress)
+            }
+
+            RamSettings(
+                config = uiState.jvmConfig,
+                onMaxMemoryChange = viewModel::setMaxMemory,
+                onMinMemoryChange = viewModel::setMinMemory
+            )
         }
     }
 }
@@ -288,25 +270,6 @@ private fun RamSettings(
             ),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }

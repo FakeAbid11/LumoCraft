@@ -6,22 +6,45 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Brand-specific colors that are not part of the Material 3 palette,
- * e.g. the home screen brand gradient.
+ * Brand-specific colors that are not part of the Material 3 palette:
+ * the home brand gradient plus the tokens that render Minecraft-GUI
+ * style beveled panels (a flat fill with a light top/left highlight and
+ * a dark bottom/right shadow).
  */
 @Immutable
 data class LumoColors(
     val brandGradientStart: Color,
     val brandGradientEnd: Color,
+    val panelFill: Color,
+    val panelInset: Color,
+    val panelBevelLight: Color,
+    val panelBevelDark: Color,
+    val panelBorder: Color,
+    val accent: Color,
+    val accentEdge: Color,
 ) {
     companion object {
-        val Light = LumoColors(
-            brandGradientStart = Color(0xFF4B5BE0),
-            brandGradientEnd = Color(0xFF8E6FE8),
-        )
         val Dark = LumoColors(
-            brandGradientStart = Color(0xFF3A45B8),
-            brandGradientEnd = Color(0xFF6C5BC9),
+            brandGradientStart = GrassGreenDark,
+            brandGradientEnd = DiamondTealDark,
+            panelFill = StonePanel,
+            panelInset = Bedrock,
+            panelBevelLight = StoneEdgeLight,
+            panelBevelDark = StoneEdgeDark,
+            panelBorder = Color(0xFF0A0C0E),
+            accent = GrassGreen,
+            accentEdge = GrassGreenBright,
+        )
+        val Light = LumoColors(
+            brandGradientStart = Color(0xFF9CCB7E),
+            brandGradientEnd = Color(0xFF7FD0C4),
+            panelFill = Color(0xFFECE9E1),
+            panelInset = Color(0xFFFFFFFF),
+            panelBevelLight = Color(0xFFFFFFFF),
+            panelBevelDark = Color(0xFFBDB6A6),
+            panelBorder = Color(0xFF8C8674),
+            accent = GrassGreenDark,
+            accentEdge = GrassGreenBright,
         )
     }
 }

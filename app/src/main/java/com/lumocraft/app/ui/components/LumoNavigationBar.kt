@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.lumocraft.app.core.theme.lumoColors
 import com.lumocraft.app.navigation.LumoDestination
 
 @Composable
@@ -17,7 +18,11 @@ fun LumoNavigationBar(
     onDestinationSelected: (LumoDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavigationBar(modifier = modifier) {
+    val colors = lumoColors()
+    NavigationBar(
+        modifier = modifier,
+        containerColor = colors.panelFill,
+    ) {
         LumoDestination.entries.forEach { destination ->
             NavigationBarItem(
                 selected = currentDestination == destination,
@@ -39,7 +44,11 @@ fun LumoNavigationBar(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    selectedIconColor = colors.accent,
+                    selectedTextColor = colors.accent,
+                    indicatorColor = colors.panelInset,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             )
         }

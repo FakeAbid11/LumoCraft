@@ -5,23 +5,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -48,8 +43,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lumocraft.app.BuildConfig
 import com.lumocraft.app.LumoCraftApplication
 import com.lumocraft.app.R
+import com.lumocraft.app.core.theme.ChipShape
 import com.lumocraft.app.core.theme.LumoCraftTheme
+import com.lumocraft.app.core.theme.LumoDimens
+import com.lumocraft.app.core.theme.PanelShape
 import com.lumocraft.app.core.theme.lumoColors
+import com.lumocraft.app.ui.components.LumoPanel
+import com.lumocraft.app.ui.components.LumoPlayButton
 
 /**
  * Home: brand, version picker + Play gated on launch readiness, account
@@ -83,8 +83,8 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(LumoDimens.screenPadding),
+        verticalArrangement = Arrangement.spacedBy(LumoDimens.sectionGap)
     ) {
         BrandCard()
         PlayCard(
@@ -113,7 +113,7 @@ fun HomeScreen(
             installedVersionsCount = state.installedVersions.size
         )
         PlannedFeaturesCard()
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(LumoDimens.tightGap))
         Text(
             text = stringResource(R.string.home_footer_version, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.labelSmall,
@@ -122,38 +122,36 @@ fun HomeScreen(
         )
     }
 }
+// PLACEHOLDER_HOME_BODY
 
 @Composable
 private fun BrandCard(modifier: Modifier = Modifier) {
     val colors = lumoColors()
-    Card(
+    // Hero panel: grass→diamond gradient fill with a hard beveled frame.
+    LumoPanel(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        contentPadding = PaddingValues(0.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     brush = Brush.linearGradient(
-                        colors = listOf(
-                            colors.brandGradientStart,
-                            colors.brandGradientEnd
-                        )
+                        colors = listOf(colors.brandGradientStart, colors.brandGradientEnd)
                     )
                 )
                 .padding(24.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(LumoDimens.tightGap)) {
                 Text(
                     text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = Color.White
                 )
                 Text(
                     text = stringResource(R.string.home_tagline),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White.copy(alpha = 0.85f)
+                    color = Color.White.copy(alpha = 0.9f)
                 )
             }
         }
@@ -172,94 +170,67 @@ private fun PlayCard(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = stringResource(R.string.home_version_selection),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (installedVersions.isNotEmpty()) {
-                    TextButton(onClick = { menuExpanded = true }) {
-                        Text(
-                            text = selectedVersionId
-                                ?: stringResource(R.string.home_version_none),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.ArrowDropDown,
-                            contentDescription = null
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false }
-                    ) {
-                        installedVersions.forEach { versionId ->
-                            DropdownMenuItem(
-                                text = { Text(versionId) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onVersionSelected(versionId)
-                                }
-                            )
-                        }
-                    }
-                } else {
+    LumoPanel(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = stringResource(R.string.home_version_selection),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (installedVersions.isNotEmpty()) {
+                TextButton(onClick = { menuExpanded = true }) {
                     Text(
-                        text = stringResource(R.string.home_version_none),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = selectedVersionId
+                            ?: stringResource(R.string.home_version_none),
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1
                     )
+                    Icon(imageVector = Icons.Filled.ArrowDropDown, contentDescription = null)
                 }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onPlayClick,
-                enabled = canPlay,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.size(8.dp))
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    installedVersions.forEach { versionId ->
+                        DropdownMenuItem(
+                            text = { Text(versionId) },
+                            onClick = {
+                                menuExpanded = false
+                                onVersionSelected(versionId)
+                            }
+                        )
+                    }
+                }
+            } else {
                 Text(
-                    text = stringResource(R.string.home_play),
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            if (hint != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = hint,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = stringResource(R.string.home_version_none),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
+        Spacer(modifier = Modifier.height(LumoDimens.itemGap))
+        LumoPlayButton(
+            text = stringResource(R.string.home_play),
+            icon = Icons.Filled.PlayArrow,
+            onClick = onPlayClick,
+            enabled = canPlay
+        )
+        if (hint != null) {
+            Spacer(modifier = Modifier.height(LumoDimens.tightGap))
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
+// PLACEHOLDER_HOME_STATUS
 
 @Composable
 private fun StatusRow(
@@ -269,7 +240,7 @@ private fun StatusRow(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(LumoDimens.itemGap)
     ) {
         StatusCard(
             title = stringResource(R.string.home_stat_profile),
@@ -294,61 +265,40 @@ private fun StatusCard(
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    LumoPanel(modifier = modifier) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
 @Composable
 private fun PlannedFeaturesCard(modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    LumoPanel(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.home_planned_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface
         )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.home_planned_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spacer(modifier = Modifier.height(LumoDimens.itemGap))
+        Row(horizontalArrangement = Arrangement.spacedBy(LumoDimens.tightGap)) {
+            listOf(
+                R.string.home_planned_chip_mods,
+                R.string.home_planned_chip_shaders,
+                R.string.home_planned_chip_java
+            ).forEach { labelRes ->
                 SuggestionChip(
                     onClick = {},
-                    label = { Text(stringResource(R.string.home_planned_chip_mods)) }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text(stringResource(R.string.home_planned_chip_shaders)) }
-                )
-                SuggestionChip(
-                    onClick = {},
-                    label = { Text(stringResource(R.string.home_planned_chip_java)) }
+                    shape = ChipShape,
+                    label = { Text(stringResource(labelRes)) }
                 )
             }
         }
@@ -362,3 +312,5 @@ private fun HomeScreenPreview() {
         HomeScreen(onPlay = {})
     }
 }
+
+

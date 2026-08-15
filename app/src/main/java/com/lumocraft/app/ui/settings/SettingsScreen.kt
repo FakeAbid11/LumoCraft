@@ -2,6 +2,7 @@ package com.lumocraft.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lumocraft.app.R
 import com.lumocraft.app.domain.model.ThemeMode
+import com.lumocraft.app.ui.components.LumoSectionPanel
 import com.lumocraft.app.ui.input.InputSettingsSection
 
 /**
@@ -50,7 +50,10 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
+        LumoSectionPanel(
+            title = stringResource(R.string.settings_section_appearance),
+            contentPadding = PaddingValues(0.dp)
+        ) {
             ThemeSettingRow(
                 themeMode = themeMode,
                 onThemeModeChange = onThemeModeChange
@@ -58,14 +61,20 @@ fun SettingsScreen(
         }
         RuntimeSettingsSection()
         RendererSettingsSection()
-        SettingsSection(title = stringResource(R.string.settings_section_performance)) {
+        LumoSectionPanel(
+            title = stringResource(R.string.settings_section_performance),
+            contentPadding = PaddingValues(0.dp)
+        ) {
             PerformanceEntryRow(onOpenPerformance)
         }
         InputSettingsSection(
             onEditLayout = onEditLayout,
             onPreviewControls = onPreviewControls
         )
-        SettingsSection(title = stringResource(R.string.settings_section_launcher)) {
+        LumoSectionPanel(
+            title = stringResource(R.string.settings_section_launcher),
+            contentPadding = PaddingValues(0.dp)
+        ) {
             DiagnosticsEntryRow(onOpenDiagnostics)
         }
         AboutSection()
@@ -88,35 +97,6 @@ private fun PerformanceEntryRow(
             text = stringResource(R.string.performance_open_dashboard),
             style = MaterialTheme.typography.bodyMedium
         )
-    }
-}
-
-@Composable
-private fun SettingsSection(
-    title: String,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            )
-        ) {
-            Column {
-                content()
-            }
-        }
     }
 }
 

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
@@ -41,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lumocraft.app.R
 import com.lumocraft.app.core.theme.LumoCraftTheme
+import com.lumocraft.app.core.theme.PanelShape
+import com.lumocraft.app.core.theme.lumoColors
 import com.lumocraft.app.domain.launch.LaunchErrorType
 import com.lumocraft.app.domain.launch.LaunchState
 
@@ -93,9 +94,9 @@ fun LaunchScreen(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            shape = RoundedCornerShape(20.dp),
+            shape = PanelShape,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                containerColor = lumoColors().panelInset
             )
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -139,9 +140,9 @@ private fun StageCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = PanelShape,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = lumoColors().panelFill
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
