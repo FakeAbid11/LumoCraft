@@ -294,6 +294,7 @@
     <string name="launch_error_native">A native library could not be loaded — this build needs the renderer glue to run the game.</string>
     <string name="launch_error_native_arch">The game\'s native libraries were prepared for a different architecture. Clear the version\'s natives and launch again.</string>
     <string name="launch_error_native_corrupted">The native extraction is corrupted. Launch again to re-extract it automatically.</string>
+    <string name="launch_error_render_engine">This build has no rendering engine, so Minecraft can\'t be displayed. Build a rendering-capable APK by running tools/fetch-pojav-natives.sh before assembling.</string>
     <string name="launch_error_classpath">The classpath could not be resolved.</string>
     <string name="launch_error_jvm">The Java virtual machine failed to start.</string>
     <string name="launch_error_storage">Launcher storage is unavailable or full. Free up space and try again.</string>

@@ -269,6 +269,7 @@ private fun errorLabel(type: LaunchErrorType): Int = when (type) {
     LaunchErrorType.NATIVE_LIBRARY_MISSING -> R.string.launch_error_native
     LaunchErrorType.NATIVE_ARCH_MISMATCH -> R.string.launch_error_native_arch
     LaunchErrorType.NATIVE_CORRUPTED -> R.string.launch_error_native_corrupted
+    LaunchErrorType.RENDER_ENGINE_UNAVAILABLE -> R.string.launch_error_render_engine
     LaunchErrorType.INVALID_CLASSPATH -> R.string.launch_error_classpath
     LaunchErrorType.JVM_INITIALIZATION_FAILURE -> R.string.launch_error_jvm
     LaunchErrorType.STORAGE_UNAVAILABLE -> R.string.launch_error_storage
