@@ -72,6 +72,13 @@ class StorageManager(context: Context) {
 
     fun librariesDirectory(): File = File(launcherRoot, "libraries")
 
+    /**
+     * Where the patched PojavLauncher LWJGL jars are unpacked at runtime (from
+     * the APK's `assets/lwjgl`). Prepended to the game classpath so Pojav's
+     * LWJGL — which routes GL/GLFW through libpojavexec — takes precedence.
+     */
+    fun pojavLwjglDirectory(): File = File(launcherRoot, "lwjgl")
+
     fun logsDirectory(): File = File(launcherRoot, "logs")
 
     fun loaderDirectory(type: LoaderType): File =

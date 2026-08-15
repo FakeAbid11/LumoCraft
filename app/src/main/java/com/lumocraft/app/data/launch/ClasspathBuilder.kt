@@ -61,7 +61,7 @@ class ClasspathBuilder(
                 c.recordHit()
                 return@withContext Result.success(
                     BuiltClasspath(
-                        classpath = entry.classpath,
+                        classpath = prependPojavLwjgl(entry.classpath),
                         libraryFiles = entry.libraryFiles.map(::File),
                         libraryRefs = emptyList(),
                         mainClass = entry.mainClass,
@@ -115,8 +115,12 @@ class ClasspathBuilder(
             .filterNot { it == clientJar }
             .toMutableList()
             .also { it.add(clientJar) }
+        // The raw classpath (Mojang libs + client jar) is what gets cached;
+        // the Pojav LWJGL jars are prepended at return time so a re-fetch of
+        // those natives is picked up without invalidating the version cache.
+        val rawClasspath = entries.joinToString(File.pathSeparator) { it.absolutePath }
         val built = BuiltClasspath(
-            classpath = entries.joinToString(File.pathSeparator) { it.absolutePath },
+            classpath = prependPojavLwjgl(rawClasspath),
             libraryFiles = entries,
             libraryRefs = refs,
             mainClass = mainClass
@@ -127,7 +131,7 @@ class ClasspathBuilder(
             c.putEntry(
                 base.copy(
                     versionJsonFingerprint = fingerprint,
-                    classpath = built.classpath,
+                    classpath = rawClasspath,
                     libraryFiles = entries.map { it.absolutePath },
                     mainClass = built.mainClass
                 )
@@ -135,6 +139,21 @@ class ClasspathBuilder(
             c.recordMiss()
         }
         Result.success(built)
+    }
+
+    /**
+     * Prepends the patched PojavLauncher LWJGL jars (if unpacked) to
+     * [classpath] so their GL/GLFW classes shadow Mojang's desktop LWJGL. A
+     * no-op when the directory is empty (e.g. natives not vendored on CI).
+     */
+    private fun prependPojavLwjgl(classpath: String): String {
+        val jars = storage.pojavLwjglDirectory()
+            .listFiles { file -> file.isFile && file.name.endsWith(".jar") }
+            ?.sortedBy { it.name }
+            ?: return classpath
+        if (jars.isEmpty()) return classpath
+        val prefix = jars.joinToString(File.pathSeparator) { it.absolutePath }
+        return "$prefix${File.pathSeparator}$classpath"
     }
 
     /** Leaf-first chain: the version itself, then each inherited parent. */

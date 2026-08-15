@@ -20,6 +20,7 @@ import com.lumocraft.app.data.launch.LaunchEnvironment
 import com.lumocraft.app.data.launch.LauncherLogRepository
 import com.lumocraft.app.data.launch.LaunchValidator
 import com.lumocraft.app.data.launch.NativeJvmLauncher
+import com.lumocraft.app.data.launch.PojavLwjglInstaller
 import com.lumocraft.app.data.loader.CompositeLoaderLaunchConfigurator
 import com.lumocraft.app.data.loader.DefaultLoaderRepository
 import com.lumocraft.app.data.loader.FabricInstaller
@@ -314,6 +315,13 @@ class LumoCraftApplication : Application() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         scope.launch {
             runCatching { inputManager.initialize() }
+            // Unpack the bundled Pojav LWJGL jars so the classpath builder can
+            // prepend them; a no-op when the natives haven't been vendored.
+            runCatching {
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    PojavLwjglInstaller(this@LumoCraftApplication, storageManager).install()
+                }
+            }
             runCatching { defaultVersionRepository.recoverInterruptedInstalls() }
                 .onFailure { e ->
                     runCatching {
