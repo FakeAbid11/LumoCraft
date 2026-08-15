@@ -6,7 +6,8 @@ import java.io.File
 
 /**
  * Unpacks the patched PojavLauncher LWJGL jars bundled in the APK
- * (`assets/lwjgl/*.jar`) into [StorageManager.pojavLwjglDirectory] so
+ * (the `.jar` files under `assets/lwjgl/`) into
+ * [StorageManager.pojavLwjglDirectory] so
  * [ClasspathBuilder] can prepend them to the game classpath.
  *
  * The jars are vendored by `tools/fetch-pojav-natives.sh` and are git-ignored,
